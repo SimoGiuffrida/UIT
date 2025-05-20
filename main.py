@@ -109,7 +109,7 @@ class FitnessCoachApp(QMainWindow):
 
             # Visualizza la posa e ottieni il frame processato
             try:
-                frame = self.pose_detector.find_pose(frame)
+                frame = self.pose_detector.find_pose(frame, exercise_success=success if 'success' in locals() else None)
                 landmarks = self.pose_detector.find_position(frame)
             except Exception as e:
                 self.feedback_label.setText('Errore durante il rilevamento della posa')
@@ -124,9 +124,6 @@ class FitnessCoachApp(QMainWindow):
                         success, feedback = self.exercise_analyzer.analyze_squat(landmarks)
                     else:  # Affondo
                         success, feedback = self.exercise_analyzer.analyze_lunge(landmarks)
-
-                    # Aggiorna il frame con il feedback visivo
-                    frame = self.pose_detector.find_pose(frame, exercise_success=success)
                     
                     # Aggiorna le etichette di feedback
                     self.feedback_label.setText(feedback)
