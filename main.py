@@ -76,6 +76,8 @@ class FitnessCoachApp(QMainWindow):
                 self.feedback_label.setText('Errore: Webcam non disponibile')
                 return
 
+        # Reinizializza il PoseDetector
+        self.pose_detector = PoseDetector()
         self.exercise_analyzer.reset_counter()
         self.start_button.setText('Termina Allenamento')
         self.timer.start(30)  # ~30 FPS
@@ -85,40 +87,79 @@ class FitnessCoachApp(QMainWindow):
         if self.cap is not None:
             self.cap.release()
             self.cap = None
+        self.pose_detector.release()
         self.start_button.setText('Inizia Allenamento')
         self.image_label.clear()
 
     def update_frame(self):
-        ret, frame = self.cap.read()
-        if not ret:
-            return
+        try:
+            if self.cap is None or not self.cap.isOpened():
+                self.stop_exercise()
+                self.feedback_label.setText('Errore: Webcam non disponibile')
+                return
 
-        # Specchia l'immagine orizzontalmente
-        frame = cv2.flip(frame, 1)
+            ret, frame = self.cap.read()
+            if not ret:
+                self.stop_exercise()
+                self.feedback_label.setText('Errore: Impossibile leggere il frame dalla webcam')
+                return
 
-        # Rileva la posa
-        frame = self.pose_detector.find_pose(frame)
-        landmarks = self.pose_detector.find_position(frame)
+            # Specchia l'immagine orizzontalmente
+            frame = cv2.flip(frame, 1)
 
-        # Analizza l'esercizio
-        if landmarks:
-            exercise = self.exercise_selector.currentText()
-            if exercise == 'Squat':
-                _, feedback = self.exercise_analyzer.analyze_squat(landmarks)
-            else:  # Affondo
-                _, feedback = self.exercise_analyzer.analyze_lunge(landmarks)
+            # Visualizza la posa e ottieni il frame processato
+            try:
+                frame = self.pose_detector.find_pose(frame)
+                landmarks = self.pose_detector.find_position(frame)
+            except Exception as e:
+                self.feedback_label.setText('Errore durante il rilevamento della posa')
+                return
 
-            self.feedback_label.setText(feedback)
-            self.rep_label.setText(f'Ripetizioni: {self.exercise_analyzer.get_rep_count()}')
+            # Analizza l'esercizio
+            if landmarks and len(landmarks) > 0:
+                exercise = self.exercise_selector.currentText()
+                success = False
+                try:
+                    if exercise == 'Squat':
+                        success, feedback = self.exercise_analyzer.analyze_squat(landmarks)
+                    else:  # Affondo
+                        success, feedback = self.exercise_analyzer.analyze_lunge(landmarks)
 
-        # Converti il frame per Qt
-        rgb_image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        h, w, ch = rgb_image.shape
-        bytes_per_line = ch * w
-        qt_image = QImage(rgb_image.data, w, h, bytes_per_line, QImage.Format.Format_RGB888)
-        scaled_pixmap = QPixmap.fromImage(qt_image).scaled(self.image_label.size(),
-                                                          Qt.AspectRatioMode.KeepAspectRatio)
-        self.image_label.setPixmap(scaled_pixmap)
+                    # Aggiorna il frame con il feedback visivo
+                    frame = self.pose_detector.find_pose(frame, exercise_success=success)
+                    
+                    # Aggiorna le etichette di feedback
+                    self.feedback_label.setText(feedback)
+                    if success:  # Aggiorna il contatore solo se l'analisi ha avuto successo
+                        self.rep_label.setText(f'Ripetizioni: {self.exercise_analyzer.get_rep_count()}')
+                except Exception as e:
+                    self.feedback_label.setText('Errore durante l\'analisi dell\'esercizio')
+                    return
+            else:
+                self.feedback_label.setText('Non riesco a rilevare i punti chiave del corpo')
+
+            # Converti il frame per Qt
+            try:
+                rgb_image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                h, w, ch = rgb_image.shape
+                bytes_per_line = ch * w
+                qt_image = QImage(rgb_image.data, w, h, bytes_per_line, QImage.Format.Format_RGB888)
+                pixmap = QPixmap.fromImage(qt_image)
+                # Ridimensiona il frame mantenendo le proporzioni
+                label_size = self.image_label.size()
+                scaled_pixmap = pixmap.scaled(label_size.width(), label_size.height(),
+                                            Qt.AspectRatioMode.KeepAspectRatio,
+                                            Qt.TransformationMode.SmoothTransformation)
+                self.image_label.setPixmap(scaled_pixmap)
+                # Centra l'immagine nel QLabel
+                self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            except Exception as e:
+                self.feedback_label.setText('Errore durante la visualizzazione del frame')
+                return
+
+        except Exception as e:
+            self.feedback_label.setText('Errore imprevisto durante l\'aggiornamento del frame')
+            self.stop_exercise()
 
     def closeEvent(self, event):
         self.stop_exercise()
