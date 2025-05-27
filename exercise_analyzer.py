@@ -35,73 +35,54 @@ class ExerciseAnalyzer:
             self.landmarks_visible = False
             return False, feedback
 
-        # Verifica la stabilità dei landmark
-        if landmarks_visible:
-            self.stable_frames += 1
-            self.unstable_frames = 0
-            if self.stable_frames < self.required_stable_frames:
-                return False, "Mantieni la posizione per iniziare l'esercizio..."
-            self.landmarks_visible = True
-        else:
-            self.unstable_frames += 1
-            if self.unstable_frames >= self.max_unstable_frames:
-                self.stable_frames = 0
-                self.landmarks_visible = False
-                return False, "Riposizionati correttamente nella telecamera..."
-            return False, feedback
+        try:
+            # Verifica che tutti i punti necessari siano presenti
+            for point in required_points:
+                if point not in landmarks:
+                    return False, f"Punto {point} mancante. Assicurati che tutto il corpo sia visibile."
 
-        # Punti chiave per lo squat
-        hip_right = landmarks[23][:2]  # Anca destra
-        hip_left = landmarks[24][:2]  # Anca sinistra
-        knee = landmarks[25][:2]  # Ginocchio destro
-        ankle = landmarks[27][:2]  # Caviglia destra
-        shoulder_right = landmarks[11][:2]  # Spalla destra
-        shoulder_left = landmarks[12][:2]  # Spalla sinistra
+            # Calcola i punti medi (spalle e anche)
+            shoulder_mid = [(landmarks[11][0] + landmarks[12][0])/2, (landmarks[11][1] + landmarks[12][1])/2]
+            hip_mid = [(landmarks[23][0] + landmarks[24][0])/2, (landmarks[23][1] + landmarks[24][1])/2]
 
-        # Calcola il punto medio tra le spalle e le anche per un'analisi più accurata
-        shoulder_mid = [(shoulder_right[0] + shoulder_left[0])/2, (shoulder_right[1] + shoulder_left[1])/2]
-        hip_mid = [(hip_right[0] + hip_left[0])/2, (hip_right[1] + hip_left[1])/2]
+            # Calcola angoli
+            knee_angle = self._calculate_angle(hip_mid, landmarks[25], landmarks[27])
+            torso_angle = self._calculate_angle(shoulder_mid, hip_mid, landmarks[25])
 
-        # Calcolo angoli
-        knee_angle = self._calculate_angle(hip_mid, knee, ankle)
-        torso_angle = self._calculate_angle(shoulder_mid, hip_mid, knee)
-
-        # Analisi della posizione
-        if knee_angle > 160:  # Posizione eretta
-            if self.position_state == 'down':
-                self.rep_counter += 1
-            self.position_state = 'up'
-            self.feedback = 'Piega le ginocchia per iniziare lo squat'
-            return True, self.feedback
-
-        elif 90 <= knee_angle <= 120:  # Posizione squat corretta
-            self.position_state = 'down'
-            # Verifica l'angolazione del busto
-            if torso_angle < 40:  # Il busto è troppo piegato in avanti
-                self.feedback = 'Mantieni la schiena più dritta'
-                return False, self.feedback
-            elif torso_angle > 110:  # Il busto è troppo inclinato all'indietro
-                self.feedback = 'Non piegare il busto all\'indietro'
-                return False, self.feedback
-            else:
-                self.feedback = 'Ottima posizione!'
+            # Analisi della posa (resto del codice invariato)
+            if knee_angle > 160:
+                if self.position_state == 'down':
+                    self.rep_counter += 1
+                self.position_state = 'up'
+                self.feedback = 'Piega le ginocchia per iniziare lo squat'
                 return True, self.feedback
+            elif 90 <= knee_angle <= 120:  # Posizione squat corretta
+                self.position_state = 'down'
+                # Verifica l'angolazione del busto
+                if torso_angle < 40:  # Il busto è troppo piegato in avanti
+                    self.feedback = 'Mantieni la schiena più dritta'
+                    return False, self.feedback
+                elif torso_angle > 110:  # Il busto è troppo inclinato all'indietro
+                    self.feedback = 'Non piegare il busto all\'indietro'
+                    return False, self.feedback
+                else:
+                    self.feedback = 'Ottima posizione!'
+                    return True, self.feedback
 
-        elif knee_angle < 90:  # Squat troppo profondo
-            self.position_state = 'down'
-            self.feedback = 'Squat troppo profondo, risali leggermente'
-            return False, self.feedback
+            elif knee_angle < 90:  # Squat troppo profondo
+                self.position_state = 'down'
+                self.feedback = 'Squat troppo profondo, risali leggermente'
+                return False, self.feedback
 
-        # Se l'angolazione del busto non è corretta in qualsiasi posizione
-        if torso_angle < 40 or torso_angle > 110:
-            self.feedback = 'Mantieni la schiena dritta'
-            return False, self.feedback
+            # Se l'angolazione del busto non è corretta in qualsiasi posizione
+            if torso_angle < 40 or torso_angle > 110:
+                self.feedback = 'Mantieni la schiena dritta'
+                return False, self.feedback
 
-        self.landmarks_visible = True
-        return True, self.feedback
-
-        self.landmarks_visible = True
-        return True, self.feedback
+            self.landmarks_visible = True
+            return True, self.feedback
+        except Exception as e:
+            return False, f"Errore nell'analisi: {str(e)}"  # Restituisci l'errore specifico
 
     def analyze_lunge(self, landmarks):
         required_points = [23, 24, 25, 26, 27, 28]  # Anche, ginocchia e caviglie di entrambe le gambe

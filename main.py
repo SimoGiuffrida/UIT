@@ -4,6 +4,8 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QComboBox, QPushButton, QLabel)
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QImage, QPixmap
+from PyQt6.QtMultimedia import QSoundEffect
+from PyQt6.QtCore import QUrl
 from pose_detector import PoseDetector
 from exercise_analyzer import ExerciseAnalyzer
 
@@ -19,24 +21,84 @@ class FitnessCoachApp(QMainWindow):
         self.cap = None
         self.timer = QTimer()
         self.timer.timeout.connect(self.update_frame)
+        self.last_rep_count = 0  # <--- AGGIUNGI QUESTA LINEA
 
+        # Inizializzazione del suono per le ripetizioni
+        self.rep_sound = QSoundEffect()
+        sound_path = QUrl.fromLocalFile("sounds/rumore.wav")
+        if sound_path.isValid():
+            self.rep_sound.setSource(sound_path)
+            self.rep_sound.setVolume(1)
+        else:
+            print("Errore: Percorso del file audio non valido.")
+        self.rep_sound.play()
         # Setup UI
         self.setup_ui()
 
     def setup_ui(self):
         # Widget principale
         central_widget = QWidget()
+        central_widget.setStyleSheet("""
+            QWidget {
+                background-color: #f0f2f5;
+            }
+        """)
         self.setCentralWidget(central_widget)
         layout = QHBoxLayout(central_widget)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(20)
 
         # Layout sinistro per controlli
         left_panel = QWidget()
+        left_panel.setStyleSheet("""
+            QWidget {
+                background-color: white;
+                border-radius: 10px;
+                padding: 20px;
+            }
+            QLabel {
+                color: #2c3e50;
+                font-weight: bold;
+                margin-bottom: 5px;
+            }
+            QComboBox {
+                padding: 8px;
+                border: 2px solid #e0e0e0;
+                border-radius: 5px;
+                background-color: white;
+                min-width: 200px;
+                margin-bottom: 15px;
+            }
+            QComboBox:hover {
+                border-color: #3498db;
+            }
+            QPushButton {
+                background-color: #3498db;
+                color: white;
+                border: none;
+                padding: 10px 20px;
+                border-radius: 5px;
+                font-weight: bold;
+                min-width: 200px;
+                margin: 10px 0;
+            }
+            QPushButton:hover {
+                background-color: #2980b9;
+            }
+            QPushButton:pressed {
+                background-color: #2472a4;
+            }
+        """)
         left_layout = QVBoxLayout(left_panel)
+        left_layout.setContentsMargins(0, 0, 0, 0)
 
         # Selezione esercizio
+        exercise_label = QLabel('Seleziona Esercizio:')
+        exercise_label.setStyleSheet('font-size: 16px; margin-top: 10px; font-family: "Segoe UI", sans-serif;')
+        left_layout.addWidget(exercise_label)
+        
         self.exercise_selector = QComboBox()
         self.exercise_selector.addItems(['Squat', 'Affondo'])
-        left_layout.addWidget(QLabel('Seleziona Esercizio:'))
         left_layout.addWidget(self.exercise_selector)
 
         # Pulsanti
@@ -46,12 +108,26 @@ class FitnessCoachApp(QMainWindow):
 
         # Contatore ripetizioni
         self.rep_label = QLabel('Ripetizioni: 0')
-        self.rep_label.setStyleSheet('font-size: 24px;')
+        self.rep_label.setStyleSheet('''
+            font-size: 32px;
+            color: #2c3e50;
+            margin: 20px 0;
+            font-family: "Segoe UI", sans-serif;
+            font-weight: bold;
+        ''')
         left_layout.addWidget(self.rep_label)
 
         # Feedback
         self.feedback_label = QLabel('Preparati all\'esercizio')
-        self.feedback_label.setStyleSheet('font-size: 18px; color: blue;')
+        self.feedback_label.setStyleSheet('''
+            font-size: 18px;
+            color: #3498db;
+            background-color: #ebf5fb;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 10px;
+            font-family: "Segoe UI", sans-serif;
+        ''')
         self.feedback_label.setWordWrap(True)
         left_layout.addWidget(self.feedback_label)
 
@@ -61,6 +137,11 @@ class FitnessCoachApp(QMainWindow):
         # Display webcam
         self.image_label = QLabel()
         self.image_label.setMinimumSize(800, 600)
+        self.image_label.setStyleSheet('''
+            background-color: white;
+            border-radius: 10px;
+            padding: 10px;
+        ''')
         layout.addWidget(self.image_label)
 
     def toggle_exercise(self):
@@ -90,6 +171,8 @@ class FitnessCoachApp(QMainWindow):
         self.pose_detector.release()
         self.start_button.setText('Inizia Allenamento')
         self.image_label.clear()
+        self.last_rep_count = 0  # Resetta il conteggio precedente
+
 
     def update_frame(self):
         try:
@@ -125,15 +208,18 @@ class FitnessCoachApp(QMainWindow):
                         else:  # Affondo
                             success, feedback = self.exercise_analyzer.analyze_lunge(landmarks)
                         
-                        # Aggiorna le etichette di feedback
                         self.feedback_label.setText(feedback)
-                        if success:  # Aggiorna il contatore solo se l'analisi ha avuto successo
-                            self.rep_label.setText(f'Ripetizioni: {self.exercise_analyzer.get_rep_count()}')
-                            
+                        current_reps = self.exercise_analyzer.get_rep_count()
+                        if current_reps > self.last_rep_count:
+                            self.rep_sound.play()
+                            self.last_rep_count = current_reps
+                        self.rep_label.setText(f'Ripetizioni: {current_reps}')
+                        
                         # Ridisegna la posa con il colore appropriato
                         frame = self.pose_detector.find_pose(frame, exercise_success=success)
                     except Exception as e:
-                        self.feedback_label.setText('Errore durante l\'analisi dell\'esercizio')
+                        self.feedback_label.setText(f'Errore analisi: {str(e)}')  # Mostra l'errore specifico
+                        print(f"Errore durante l'analisi: {e}")  # Debug nella console
                         return
                 else:
                     self.feedback_label.setText('Non riesco a rilevare i punti chiave del corpo')
