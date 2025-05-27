@@ -109,31 +109,38 @@ class FitnessCoachApp(QMainWindow):
 
             # Visualizza la posa e ottieni il frame processato
             try:
-                frame = self.pose_detector.find_pose(frame, exercise_success=success if 'success' in locals() else None)
+                # Prima disegna la posa base
+                frame = self.pose_detector.find_pose(frame, draw=False)
+                
+                # Poi trova i landmark per l'analisi
                 landmarks = self.pose_detector.find_position(frame)
+                success = None
+                
+                # Analizza l'esercizio se i landmark sono disponibili
+                if landmarks and len(landmarks) > 0:
+                    exercise = self.exercise_selector.currentText()
+                    try:
+                        if exercise == 'Squat':
+                            success, feedback = self.exercise_analyzer.analyze_squat(landmarks)
+                        else:  # Affondo
+                            success, feedback = self.exercise_analyzer.analyze_lunge(landmarks)
+                        
+                        # Aggiorna le etichette di feedback
+                        self.feedback_label.setText(feedback)
+                        if success:  # Aggiorna il contatore solo se l'analisi ha avuto successo
+                            self.rep_label.setText(f'Ripetizioni: {self.exercise_analyzer.get_rep_count()}')
+                            
+                        # Ridisegna la posa con il colore appropriato
+                        frame = self.pose_detector.find_pose(frame, exercise_success=success)
+                    except Exception as e:
+                        self.feedback_label.setText('Errore durante l\'analisi dell\'esercizio')
+                        return
+                else:
+                    self.feedback_label.setText('Non riesco a rilevare i punti chiave del corpo')
             except Exception as e:
                 self.feedback_label.setText('Errore durante il rilevamento della posa')
                 return
 
-            # Analizza l'esercizio
-            if landmarks and len(landmarks) > 0:
-                exercise = self.exercise_selector.currentText()
-                success = False
-                try:
-                    if exercise == 'Squat':
-                        success, feedback = self.exercise_analyzer.analyze_squat(landmarks)
-                    else:  # Affondo
-                        success, feedback = self.exercise_analyzer.analyze_lunge(landmarks)
-                    
-                    # Aggiorna le etichette di feedback
-                    self.feedback_label.setText(feedback)
-                    if success:  # Aggiorna il contatore solo se l'analisi ha avuto successo
-                        self.rep_label.setText(f'Ripetizioni: {self.exercise_analyzer.get_rep_count()}')
-                except Exception as e:
-                    self.feedback_label.setText('Errore durante l\'analisi dell\'esercizio')
-                    return
-            else:
-                self.feedback_label.setText('Non riesco a rilevare i punti chiave del corpo')
 
             # Converti il frame per Qt
             try:

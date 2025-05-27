@@ -34,12 +34,23 @@ class PoseDetector:
         
         if self.results.pose_landmarks and draw:
             # Aggiorna i colori in base al feedback dell'esercizio
+            color = self.color_neutral  # Colore predefinito
             if exercise_success is not None:
                 color = self.color_correct if exercise_success else self.color_incorrect
-                self.landmark_drawing_spec.color = color
-                self.connection_drawing_spec.color = color
-                
-                # Aggiungi un bordo colorato all'immagine
+            
+            # Aggiorna le specifiche di disegno con il colore appropriato
+            self.landmark_drawing_spec = self.mp_draw.DrawingSpec(
+                color=color,
+                thickness=2,
+                circle_radius=4
+            )
+            self.connection_drawing_spec = self.mp_draw.DrawingSpec(
+                color=color,
+                thickness=2
+            )
+            
+            # Aggiungi un bordo colorato all'immagine
+            if exercise_success is not None:
                 border_thickness = 10
                 h, w = img.shape[:2]
                 overlay = img.copy()
