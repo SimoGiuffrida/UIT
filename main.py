@@ -13,7 +13,7 @@ from exercise_analyzer import ExerciseAnalyzer
 class FitnessCoachApp(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle('Fitness Coach AR - Nun Mollà Edition')
+        self.setWindowTitle('Fitness Coach AR')
         self.setGeometry(50, 50, 1600, 900)
 
         self.pose_detector = PoseDetector()
@@ -223,9 +223,9 @@ class FitnessCoachApp(QMainWindow):
                 return # Esce dalla funzione per evitare ulteriori elaborazioni
             
             elif actual_reps == target - 1 and target > 1: #
-                motivational_text = "\nNUN MOLLA'! È L'ULTIMA!"
+                motivational_text = "\nÈ L'ULTIMA!"
             elif actual_reps == target - 2 and target > 2: #
-                motivational_text = "\nNUN MOLLA'! QUASI FINITO, SOLO DUE!"
+                motivational_text = "\nQUASI FINITO, SOLO DUE!"
             elif actual_reps > 0 and actual_reps >= target * 0.75 : #
                  motivational_text = f"\nFORZA, SEI VICINISSIMO ({actual_reps}/{target})!"
             elif actual_reps > 0 and actual_reps >= target * 0.5 : #
