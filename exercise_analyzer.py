@@ -94,12 +94,12 @@ class ExerciseAnalyzer:
                 else:
                     current_feedback = 'Piega le ginocchia per iniziare lo squat.'
                 self.position_state = 'up'
-            elif 90 <= knee_angle <= 120:  # Posizione squat corretta
+            elif 90 <= knee_angle <= 100:  # Posizione squat corretta
                 self.position_state = 'down'
                 if torso_angle < 45: # Busto troppo piegato (soglia leggermente aumentata)
                     current_feedback = 'Mantieni la schiena più dritta, non piegare troppo il busto.'
                     pose_correct = False
-                elif torso_angle > 100: # Busto troppo dritto/indietro (soglia leggermente ridotta)
+                elif torso_angle > 120: # Busto troppo dritto/indietro (soglia leggermente ridotta)
                     current_feedback = 'Inclina leggermente il busto in avanti, non andare all\'indietro.'
                     pose_correct = False
                 else:
