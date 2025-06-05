@@ -265,7 +265,7 @@ class FitnessCoachApp(QMainWindow):
                 # --- Logica Suoni Basata sull'Analisi ---
 
                 # Suono per "stabile, puoi iniziare" (start.wav)
-                if "Piega le ginocchia per iniziare l'esercizio" in current_form_feedback and \
+                if "Piega le ginocchia per iniziare lo squat." in current_form_feedback and \
                    not self.start_sound_played_since_last_unstable:
                     #if self.start_sound:
                     self.start_sound.play()
