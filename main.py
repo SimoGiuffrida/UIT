@@ -267,8 +267,8 @@ class FitnessCoachApp(QMainWindow):
                 # Suono per "stabile, puoi iniziare" (start.wav)
                 if "Stabile. Puoi iniziare l'esercizio!" in current_form_feedback and \
                    not self.start_sound_played_since_last_unstable:
-                    if self.start_sound:
-                        self.start_sound.play()
+                    #if self.start_sound:
+                    self.start_sound.play()
                     self.start_sound_played_since_last_unstable = True
                 
                 # Suono per forma errata (redflag.wav)
