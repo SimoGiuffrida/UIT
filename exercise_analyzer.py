@@ -57,6 +57,7 @@ class ExerciseAnalyzer:
                 self.feedback = "Stabile. Puoi iniziare l'esercizio!" # Feedback quando si diventa stabili
             self.landmarks_currently_visible_and_stable = True
             # Non restituire feedback qui, lascia che sia l'analisi specifica dell'esercizio a farlo
+            
             return True, ""
         else:
             # I landmark sono presenti, ma non ancora abbastanza stabili
