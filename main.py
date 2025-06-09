@@ -24,12 +24,12 @@ class FitnessCoachApp(QMainWindow):
         self.last_rep_count = 0
         self.current_target_reps = 0
 
-        # --- Flag per la gestione dei suoni ---
+        # Gestione suoni
         self.start_sound_played_since_last_unstable = False
         self.target_sound_played_this_session = False
         self.error_sound_played_for_this_error_instance = False
 
-        # --- Caricamento Suoni ---
+        # Carica effetti sonori
         self.one_rep_sound = self.load_sound("sounds/oneRep.wav")
         self.start_sound = self.load_sound("sounds/start.wav")
         self.target_reached_sound = self.load_sound("sounds/obbiettivo.wav")
@@ -82,7 +82,7 @@ class FitnessCoachApp(QMainWindow):
         left_layout.addWidget(exercise_label_title)
 
         self.exercise_selector = QComboBox()
-        self.exercise_selector.addItems(['Squat', 'Affondo']) #
+        self.exercise_selector.addItems(['Squat', 'Affondo'])
         self.exercise_selector.setStyleSheet('font-size: 14px;')
         left_layout.addWidget(self.exercise_selector)
 
@@ -90,44 +90,44 @@ class FitnessCoachApp(QMainWindow):
         target_reps_label.setStyleSheet('font-size: 16px; margin-top: 15px;')
         left_layout.addWidget(target_reps_label)
 
-        self.target_reps_input = QSpinBox() #
-        self.target_reps_input.setMinimum(0) #
-        self.target_reps_input.setMaximum(200) #
-        self.target_reps_input.setValue(10) #
+        self.target_reps_input = QSpinBox()
+        self.target_reps_input.setMinimum(0)
+        self.target_reps_input.setMaximum(200)
+        self.target_reps_input.setValue(10)
         left_layout.addWidget(self.target_reps_input)
 
-        self.start_button = QPushButton('Inizia Allenamento') #
+        self.start_button = QPushButton('Inizia Allenamento')
         self.start_button.setStyleSheet('font-size: 15px; margin-top:15px;')
-        self.start_button.clicked.connect(self.toggle_exercise) #
+        self.start_button.clicked.connect(self.toggle_exercise)
         left_layout.addWidget(self.start_button)
 
-        self.rep_label = QLabel('RIPETIZIONI: 0') #
+        self.rep_label = QLabel('RIPETIZIONI: 0')
         self.rep_label.setStyleSheet('font-size: 26px; color: #e67e22; margin: 20px 0; font-weight: bold;')
-        self.rep_label.setAlignment(Qt.AlignmentFlag.AlignCenter) #
+        self.rep_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         left_layout.addWidget(self.rep_label)
         
         left_layout.addStretch()
         
-        self.image_label = QLabel() #
-        self.image_label.setStyleSheet("background-color: #222; border-radius: 10px;") #
-        self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter) #
-        self.image_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding) #
+        self.image_label = QLabel()
+        self.image_label.setStyleSheet("background-color: #222; border-radius: 10px;")
+        self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.image_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
         h_top_layout.addWidget(self.left_panel, 1)
         h_top_layout.addWidget(self.image_label, 3)
 
-        self.feedback_label = QLabel('Pronto per iniziare!') #
-        feedback_font = QFont("Segoe UI", 32, QFont.Weight.Bold) #
-        self.feedback_label.setFont(feedback_font) #
+        self.feedback_label = QLabel('Pronto per iniziare!')
+        feedback_font = QFont("Segoe UI", 32, QFont.Weight.Bold)
+        self.feedback_label.setFont(feedback_font)
         self.feedback_label.setStyleSheet('''
             color: white; 
             background-color: #34495e;
             padding: 20px; 
             border-radius: 10px; 
-        ''') #
-        self.feedback_label.setWordWrap(True) #
-        self.feedback_label.setAlignment(Qt.AlignmentFlag.AlignCenter) #
-        self.feedback_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding) #
+        ''')
+        self.feedback_label.setWordWrap(True)
+        self.feedback_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.feedback_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
         v_main_layout.addWidget(top_container_widget)
         v_main_layout.addWidget(self.feedback_label)
@@ -136,101 +136,99 @@ class FitnessCoachApp(QMainWindow):
         v_main_layout.setStretchFactor(self.feedback_label, 1)
 
     def toggle_exercise(self):
-        if self.timer.isActive(): #
-            self.stop_exercise() #
+        if self.timer.isActive():
+            self.stop_exercise()
         else:
-            self.start_exercise() #
+            self.start_exercise()
 
     def start_exercise(self):
         if self.cap is None:
-            self.cap = cv2.VideoCapture(0) #
-            if not self.cap.isOpened(): #
-                self.update_feedback_and_reps(feedback_text='Errore: Webcam non disponibile.') #
-                self.cap = None #
+            self.cap = cv2.VideoCapture(0)
+            if not self.cap.isOpened():
+                self.update_feedback_and_reps(feedback_text='Errore: Webcam non disponibile.')
+                self.cap = None
                 return
         
-        self.current_target_reps = self.target_reps_input.value() #
-        if self.current_target_reps == 0: #
+        self.current_target_reps = self.target_reps_input.value()
+        if self.current_target_reps == 0:
             initial_feedback = "Nessun obiettivo impostato. Fai del tuo meglio!\nAttendere stabilizzazione..."
         else:
             initial_feedback = f"Obiettivo: {self.current_target_reps} ripetizioni. DAJE!\nAttendere stabilizzazione..."
 
-        self.pose_detector = PoseDetector() #
-        self.exercise_analyzer.reset_counter() #
-        self.last_rep_count = 0 #
+        self.pose_detector = PoseDetector()
+        self.exercise_analyzer.reset_counter()
+        self.last_rep_count = 0
         
         # Reset flag suoni
-        self.start_sound_played_since_last_unstable = False #
-        self.target_sound_played_this_session = False #
-        self.error_sound_played_for_this_error_instance = False #
+        self.start_sound_played_since_last_unstable = False
+        self.target_sound_played_this_session = False
+        self.error_sound_played_for_this_error_instance = False
 
-        self.update_feedback_and_reps(feedback_text=initial_feedback) #
+        self.update_feedback_and_reps(feedback_text=initial_feedback)
         
-        self.start_button.setText('Termina Allenamento') #
-        self.exercise_selector.setEnabled(False) #
-        self.target_reps_input.setEnabled(False) #
-        self.timer.start(33) #
+        self.start_button.setText('Termina Allenamento')
+        self.exercise_selector.setEnabled(False)
+        self.target_reps_input.setEnabled(False)
+        self.timer.start(33)
 
     def stop_exercise(self):
-        self.timer.stop() #
+        self.timer.stop()
         if self.cap is not None:
-            self.cap.release() #
-            self.cap = None #
+            self.cap.release()
+            self.cap = None
         if self.pose_detector is not None:
-            self.pose_detector.release() #
+            self.pose_detector.release()
 
-        self.start_button.setText('Inizia Allenamento') #
-        self.exercise_selector.setEnabled(True) #
-        self.target_reps_input.setEnabled(True) #
+        self.start_button.setText('Inizia Allenamento')
+        self.exercise_selector.setEnabled(True)
+        self.target_reps_input.setEnabled(True)
         
-        cleaned_image = QPixmap(self.image_label.size()) #
-        cleaned_image.fill(Qt.GlobalColor.black) #
-        self.image_label.setPixmap(cleaned_image) #
+        cleaned_image = QPixmap(self.image_label.size())
+        cleaned_image.fill(Qt.GlobalColor.black)
+        self.image_label.setPixmap(cleaned_image)
         
-        self.update_feedback_and_reps(feedback_text='Allenamento terminato. Imposta un nuovo obiettivo e riparti!') #
-        self.last_rep_count = 0 #
-        # self.current_target_reps = 0 # Non resettare qui, così l'utente vede l'obiettivo raggiunto
+        self.update_feedback_and_reps(feedback_text='Allenamento terminato. Imposta un nuovo obiettivo e riparti!')
+        self.last_rep_count = 0
+        # Manteniamo target_reps per mostrare l'obiettivo raggiunto
 
     def update_feedback_and_reps(self, feedback_text=None, rep_count=None):
-        form_feedback = feedback_text if feedback_text is not None else self.exercise_analyzer.feedback #
-        actual_reps = rep_count if rep_count is not None else self.exercise_analyzer.get_rep_count() #
+        form_feedback = feedback_text if feedback_text is not None else self.exercise_analyzer.feedback
+        actual_reps = rep_count if rep_count is not None else self.exercise_analyzer.get_rep_count()
         
-        self.rep_label.setText(f'RIPETIZIONI: {actual_reps}') #
+        self.rep_label.setText(f'RIPETIZIONI: {actual_reps}')
 
         motivational_text = ""
-        target = self.current_target_reps #
+        target = self.current_target_reps
 
-        if target > 0: #
-            if actual_reps >= target: #
-                motivational_text = f"\nCOMPLIMENTI! OBIETTIVO DI {target} RAGGIUNTO E SUPERATO! SEI UN GRANDE!" #
-                if not self.target_sound_played_this_session: #
-                    if self.target_reached_sound: #
-                        self.target_reached_sound.play() #
-                    self.target_sound_played_this_session = True #
+        if target > 0:
+            if actual_reps >= target:
+                motivational_text = f"\nCOMPLIMENTI! OBIETTIVO DI {target} RAGGIUNTO E SUPERATO! SEI UN GRANDE!"
+                if not self.target_sound_played_this_session:
+                    if self.target_reached_sound:
+                        self.target_reached_sound.play()
+                    self.target_sound_played_this_session = True
                 
-                # Termina l'allenamento automaticamente
+                # Gestione fine allenamento
                 full_feedback_message = form_feedback + motivational_text
-                if feedback_text is None : # Se il feedback non era già stato sovrascritto da un errore di visibilità etc.
+                if feedback_text is None:
                      full_feedback_message = self.exercise_analyzer.feedback + motivational_text
 
-
-                self.feedback_label.setText(full_feedback_message) # Aggiorna UI prima di fermare
-                QApplication.processEvents() # Assicura che l'UI si aggiorni
+                self.feedback_label.setText(full_feedback_message)
+                QApplication.processEvents()
                 
-                # Usiamo QTimer.singleShot per ritardare leggermente la chiamata a stop_exercise,
-                # così l'utente ha un momento per leggere il messaggio e sentire il suono.
-                QTimer.singleShot(1500, self.stop_exercise) # Ritardo di 1.5 secondi
-                return # Esce dalla funzione per evitare ulteriori elaborazioni
+                # Breve pausa prima di terminare
+                QTimer.singleShot(1500, self.stop_exercise)
+                return
             
-            elif actual_reps == target - 1 and target > 1: #
+            elif actual_reps == target - 1 and target > 1:
                 motivational_text = "\nÈ L'ULTIMA!"
-            elif actual_reps == target - 2 and target > 2: #
+            elif actual_reps == target - 2 and target > 2:
                 motivational_text = "\nQUASI FINITO, SOLO DUE!"
-            elif actual_reps > 0 and actual_reps >= target * 0.75 : #
+            elif actual_reps > 0 and actual_reps >= target * 0.75:
                  motivational_text = f"\nFORZA, SEI VICINISSIMO ({actual_reps}/{target})!"
-            elif actual_reps > 0 and actual_reps >= target * 0.5 : #
+            elif actual_reps > 0 and actual_reps >= target * 0.5:
                  motivational_text = f"\nOTTIMO! PIÙ DELLA METÀ ({actual_reps}/{target})! CONTINUA COSÌ!"
-            elif actual_reps > 0 : #
+            elif actual_reps > 0:
                  motivational_text = f"\nBENE! Procedi verso {target} ({actual_reps}/{target})."
 
         final_feedback_display = form_feedback
@@ -239,70 +237,71 @@ class FitnessCoachApp(QMainWindow):
         
         self.feedback_label.setText(final_feedback_display) #
 
-        if actual_reps > self.last_rep_count: #
-            if self.one_rep_sound: #
-                self.one_rep_sound.play() #
-            self.last_rep_count = actual_reps #
-            self.error_sound_played_for_this_error_instance = False #
+        if actual_reps > self.last_rep_count:
+            if self.one_rep_sound:
+                self.one_rep_sound.play()
+            self.last_rep_count = actual_reps
+            self.error_sound_played_for_this_error_instance = False
 
 
     def update_frame(self):
-        if not self.timer.isActive(): # Se il timer è stato fermato (es. da obiettivo raggiunto), non fare nulla
+        # Non procedere se l'allenamento è stato interrotto
+        if not self.timer.isActive():
             return
 
-        if self.cap is None or not self.cap.isOpened(): #
-            self.update_feedback_and_reps(feedback_text='Errore: Webcam persa.') #
-            self.stop_exercise() #
+        if self.cap is None or not self.cap.isOpened():
+            self.update_feedback_and_reps(feedback_text='Errore: Webcam persa.')
+            self.stop_exercise()
             return
 
-        ret, frame = self.cap.read() #
-        if not ret or frame is None: #
-            self.update_feedback_and_reps(feedback_text='Errore: No frame dalla webcam.') #
-            self.stop_exercise() #
+        ret, frame = self.cap.read()
+        if not ret or frame is None:
+            self.update_feedback_and_reps(feedback_text='Errore: No frame dalla webcam.')
+            self.stop_exercise()
             return
 
-        frame = cv2.flip(frame, 1) #
-        processed_frame_for_landmarks = self.pose_detector.find_pose(frame.copy(), draw=False) #
-        landmarks = self.pose_detector.find_position(processed_frame_for_landmarks) #
+        # Prepara il frame per l'analisi
+        frame = cv2.flip(frame, 1)
+        processed_frame_for_landmarks = self.pose_detector.find_pose(frame.copy(), draw=False)
+        landmarks = self.pose_detector.find_position(processed_frame_for_landmarks)
 
-        analysis_success = False #
-        current_form_feedback = self.exercise_analyzer.feedback #
+        analysis_success = False
+        current_form_feedback = self.exercise_analyzer.feedback
 
-        if landmarks and len(landmarks) > 0: #
-            exercise_type = self.exercise_selector.currentText() #
+        # Analizza la postura se sono stati rilevati i punti del corpo
+        if landmarks and len(landmarks) > 0:
+            exercise_type = self.exercise_selector.currentText()
             try:
-                if exercise_type == 'Squat': #
-                    analysis_success, current_form_feedback = self.exercise_analyzer.analyze_squat(landmarks) #
-                elif exercise_type == 'Affondo': #
-                    analysis_success, current_form_feedback = self.exercise_analyzer.analyze_lunge(landmarks) #
+                if exercise_type == 'Squat':
+                    analysis_success, current_form_feedback = self.exercise_analyzer.analyze_squat(landmarks)
+                elif exercise_type == 'Affondo':
+                    analysis_success, current_form_feedback = self.exercise_analyzer.analyze_lunge(landmarks)
                 
-                # Suono per "stabile, puoi iniziare" (start.wav)
-                # Modificato per triggerare su "Piega le ginocchia..." o "Fai un passo..."
+                # Gestione feedback sonoro
                 start_feedbacks = ["Piega le ginocchia per iniziare lo squat.", "Fai un passo per iniziare l'affondo.", "Stabile. Puoi iniziare l'esercizio!"]
                 if any(fb_text in current_form_feedback for fb_text in start_feedbacks) and \
                    self.exercise_analyzer.landmarks_currently_visible_and_stable and \
                    not self.start_sound_played_since_last_unstable:
-                    if self.start_sound: #
-                        self.start_sound.play() #
-                    self.start_sound_played_since_last_unstable = True #
+                    if self.start_sound:
+                        self.start_sound.play()
+                    self.start_sound_played_since_last_unstable = True
                 
-                if self.exercise_analyzer.landmarks_currently_visible_and_stable: #
-                    if not analysis_success: # Errore di forma #
-                        if not self.error_sound_played_for_this_error_instance: #
-                            # Evita il suono di errore per feedback di stabilizzazione o puramente informativi
+                if self.exercise_analyzer.landmarks_currently_visible_and_stable:
+                    if not analysis_success:
+                        if not self.error_sound_played_for_this_error_instance:
                             error_trigger_feedbacks = ["Mantieni la schiena più dritta", "Busto troppo piegato", 
                                                        "Inclina leggermente il busto", "Squat troppo profondo",
                                                        "Attenzione alla schiena", "Ginocchio anteriore troppo avanti",
                                                        "Aggiusta la posizione", "Piega di più", "Scendi di più"]
                             if any(fb_text in current_form_feedback for fb_text in error_trigger_feedbacks):
-                                if self.form_error_sound: #
-                                    self.form_error_sound.play() #
-                                self.error_sound_played_for_this_error_instance = True #
-                    else: # Forma corretta
-                        self.error_sound_played_for_this_error_instance = False #
-                else: # Landmark non stabili o non visibili
-                    self.error_sound_played_for_this_error_instance = False #
-                    self.start_sound_played_since_last_unstable = False #
+                                if self.form_error_sound:
+                                    self.form_error_sound.play()
+                                self.error_sound_played_for_this_error_instance = True
+                    else:
+                        self.error_sound_played_for_this_error_instance = False
+                else:
+                    self.error_sound_played_for_this_error_instance = False
+                    self.start_sound_played_since_last_unstable = False
 
                 self.update_feedback_and_reps(feedback_text=current_form_feedback) #
 
@@ -313,34 +312,37 @@ class FitnessCoachApp(QMainWindow):
                 self.update_feedback_and_reps(feedback_text=current_form_feedback) #
                 analysis_success = False #
         else:
-            if hasattr(self.exercise_analyzer, '_handle_landmark_visibility_and_stability'): #
-                 _, visibility_feedback = self.exercise_analyzer._handle_landmark_visibility_and_stability(landmarks, []) #
-                 current_form_feedback = visibility_feedback #
+            # Gestione quando non sono rilevati punti del corpo
+            if hasattr(self.exercise_analyzer, '_handle_landmark_visibility_and_stability'):
+                 _, visibility_feedback = self.exercise_analyzer._handle_landmark_visibility_and_stability(landmarks, [])
+                 current_form_feedback = visibility_feedback
             else:
-                 current_form_feedback = "Nessun corpo rilevato. Posizionati correttamente." #
+                 current_form_feedback = "Nessun corpo rilevato. Posizionati correttamente."
             
-            self.error_sound_played_for_this_error_instance = False #
-            self.start_sound_played_since_last_unstable = False #
-            self.update_feedback_and_reps(feedback_text=current_form_feedback) #
+            self.error_sound_played_for_this_error_instance = False
+            self.start_sound_played_since_last_unstable = False
+            self.update_feedback_and_reps(feedback_text=current_form_feedback)
         
-        final_frame_to_draw = self.pose_detector.find_pose(frame, draw=True, exercise_success=analysis_success if self.exercise_analyzer.landmarks_currently_visible_and_stable else None) #
+        # Visualizza il frame con i punti di riferimento
+        final_frame_to_draw = self.pose_detector.find_pose(frame, draw=True, exercise_success=analysis_success if self.exercise_analyzer.landmarks_currently_visible_and_stable else None)
 
         try:
-            rgb_image = cv2.cvtColor(final_frame_to_draw, cv2.COLOR_BGR2RGB) #
-            h, w, ch = rgb_image.shape #
-            bytes_per_line = ch * w #
-            qt_image = QImage(rgb_image.data, w, h, bytes_per_line, QImage.Format.Format_RGB888) #
+            # Converti e mostra il frame
+            rgb_image = cv2.cvtColor(final_frame_to_draw, cv2.COLOR_BGR2RGB)
+            h, w, ch = rgb_image.shape
+            bytes_per_line = ch * w
+            qt_image = QImage(rgb_image.data, w, h, bytes_per_line, QImage.Format.Format_RGB888)
             
-            pixmap = QPixmap.fromImage(qt_image) #
-            scaled_pixmap = pixmap.scaled(self.image_label.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation) #
-            self.image_label.setPixmap(scaled_pixmap) #
+            pixmap = QPixmap.fromImage(qt_image)
+            scaled_pixmap = pixmap.scaled(self.image_label.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+            self.image_label.setPixmap(scaled_pixmap)
 
         except Exception as e:
             print(f"Errore conversione/visualizzazione frame: {e}")
 
     def closeEvent(self, event):
-        self.stop_exercise() #
-        event.accept() #
+        self.stop_exercise()
+        event.accept()
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)

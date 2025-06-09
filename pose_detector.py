@@ -3,18 +3,29 @@ import mediapipe as mp
 import numpy as np
 
 class PoseDetector:
-    def __init__(self):
-        self.mp_pose = mp.solutions.pose
-        self.pose = self.mp_pose.Pose(min_detection_confidence=0.5,
-                                     min_tracking_confidence=0.5,
-                                     enable_segmentation=False, # Disabilita per performance se non serve maschera
-                                     model_complexity=1) # 0, 1, or 2. Higher = more accurate but slower.
-        self.mp_draw = mp.solutions.drawing_utils
-        # self.mp_draw_styles = mp.solutions.drawing_styles # Non usato direttamente
+    def __init__(self, mode=False, model_complexity=1, smooth_landmarks=True, enable_segmentation=False, smooth_segmentation=True,
+                 min_detection_confidence=0.5, min_tracking_confidence=0.5):
+        # Inizializza i parametri per il rilevamento della posa
+        self.mode = mode
+        self.model_complexity = model_complexity
+        self.smooth_landmarks = smooth_landmarks
+        self.enable_segmentation = enable_segmentation
+        self.smooth_segmentation = smooth_segmentation
+        self.min_detection_confidence = min_detection_confidence
+        self.min_tracking_confidence = min_tracking_confidence
 
-        self.color_correct = (0, 255, 0)
-        self.color_incorrect = (0, 0, 255)
-        self.color_neutral = (255, 255, 0) # Giallo/Ciano per neutro
+        # Configura MediaPipe per il rilevamento della posa
+        self.mp_pose = mp.solutions.pose
+        self.pose = self.mp_pose.Pose(self.mode, self.model_complexity, self.smooth_landmarks,
+                                     self.enable_segmentation, self.smooth_segmentation,
+                                     self.min_detection_confidence, self.min_tracking_confidence)
+        self.mp_draw = mp.solutions.drawing_utils
+        self.mp_drawing_styles = mp.solutions.drawing_styles
+
+        # Colori per il feedback visivo
+        self.color_neutral = (255, 255, 255)
+        self.color_success = (0, 255, 0)
+        self.color_error = (0, 0, 255)
 
     def find_pose(self, img, draw=True, exercise_success=None):
         img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
@@ -29,37 +40,9 @@ class PoseDetector:
             border_thickness = 10
             h, w = img.shape[:2]
             
-            # Per evitare che il bordo venga tagliato, disegnalo leggermente all'interno.
-            # Il centro della linea del bordo sarà spostato verso l'interno.
-            # pt1_offset = border_thickness // 2
-            # pt2_offset_w = w - border_thickness // 2
-            # pt2_offset_h = h - border_thickness // 2
-
-            # Disegna il rettangolo di bordo sull'immagine originale (o su un overlay)
-            # Se disegniamo direttamente su img, non serve addWeighted per il solo bordo
-            if exercise_success is not None: # Applica bordo solo se c'è un feedback di successo/errore
-                # Per far sì che l'intero spessore sia visibile, disegnamo N rettangoli sottili
-                # o un singolo rettangolo spesso ma ci assicuriamo che i suoi limiti siano visibili.
-                # Il modo più semplice per avere un bordo visibile di spessore T è disegnarlo
-                # da (T/2, T/2) a (W-T/2, H-T/2) con spessore T.
-                # Questo significa che il bordo si estenderà da 0 a T e da W-T a W.
-                
-                # Soluzione: Disegna il bordo su un overlay che viene poi fuso.
-                # Per garantire che il bordo sia completamente visibile e non "tagliato" ai lati:
-                # Il rettangolo di OpenCV viene disegnato con il centro della linea sulle coordinate date.
-                # Quindi, se disegniamo da (0,0) a (w,h) con spessore 10, 5 pixel sono "fuori" dall'immagine.
-                # Disegniamo il rettangolo in modo che i suoi estremi siano all'interno.
-                # Punto iniziale (x1,y1) e finale (x2,y2) per il rettangolo.
-                # Lo spessore si estende t/2 da ogni lato della linea.
-                # Per avere un bordo visibile di spessore 'border_thickness',
-                # il centro della linea del bordo deve essere a border_thickness/2 dai bordi dell'immagine.
-                
-                # Copia per l'overlay del bordo
+            if exercise_success is not None: 
                 overlay = img.copy()
                 
-                # Rettangolo per il bordo: usa i punti che definiscono il centro della linea del bordo
-                # Spostati all'interno di half_thickness per il primo punto
-                # e all'esterno di half_thickness (rispetto al centro) per il secondo punto
                 half_thickness = border_thickness // 2
                 pt1_border = (half_thickness, half_thickness)
                 pt2_border = (w - half_thickness, h - half_thickness)
@@ -70,7 +53,7 @@ class PoseDetector:
             # Disegna i landmark della posa
             if self.results.pose_landmarks:
                 landmark_drawing_spec = self.mp_draw.DrawingSpec(
-                    color=current_color, thickness=1, circle_radius=3 # Cerchi più piccoli
+                    color=current_color, thickness=1, circle_radius=3 
                 )
                 connection_drawing_spec = self.mp_draw.DrawingSpec(
                     color=current_color, thickness=2
@@ -84,33 +67,28 @@ class PoseDetector:
                 )
         return img
 
-    def find_position(self, img): # img non è usato qui, ma passato per consistenza
-        landmarks_list = {}
-        if self.results and self.results.pose_landmarks:
-            # Considera tutti i landmark disponibili se necessario, o filtra
-            # body_landmarks_indices = [11, 12, 23, 24, 25, 26, 27, 28] # Esempio
-            h, w, _ = img.shape # Prendi le dimensioni dall'immagine passata
+    def find_position(self, img, draw=True):
+        self.lm_list = []
+        if self.results.pose_landmarks:
             for id, lm in enumerate(self.results.pose_landmarks.landmark):
-                # Filtra per i landmark che ti interessano se non li vuoi tutti
-                # if id not in body_landmarks_indices:
-                # continue
-                
-                # Controlla visibilità prima di usare il landmark (anche se MediaPipe lo fa)
-                if lm.visibility > 0.3: # Soglia di visibilità, puoi regolarla
-                    cx, cy = int(lm.x * w), int(lm.y * h)
-                    landmarks_list[id] = [cx, cy, lm.z, lm.visibility] # Aggiungi z e visibilità
-                # else:
-                    # landmarks_list[id] = [None, None, None, lm.visibility] # Segna come non affidabile
-        return landmarks_list
+                h, w, c = img.shape
+                cx, cy = int(lm.x * w), int(lm.y * h)
+                self.lm_list.append([id, cx, cy, lm.visibility])
 
+        return self.lm_list
 
-    def calculate_angle(self, p1, p2, p3):
-        p1, p2, p3 = np.array(p1[:2]), np.array(p2[:2]), np.array(p3[:2]) # Usa solo x,y per angolo 2D
-        radians = np.arctan2(p3[1]-p2[1], p3[0]-p2[0]) - \
-                 np.arctan2(p1[1]-p2[1], p1[0]-p2[0])
-        angle = np.abs(radians*180.0/np.pi)
-        if angle > 180.0:
-            angle = 360-angle
+    def calculate_angle(self, img, p1, p2, p3, draw=True):
+        x1, y1 = self.lm_list[p1][1:3]
+        x2, y2 = self.lm_list[p2][1:3]
+        x3, y3 = self.lm_list[p3][1:3]
+
+        angle = math.degrees(math.atan2(y3 - y2, x3 - x2) -
+                           math.atan2(y1 - y2, x1 - x2))
+        if angle < 0:
+            angle += 360
+        if angle > 180:
+            angle = 360 - angle
+
         return angle
 
     def release(self):
