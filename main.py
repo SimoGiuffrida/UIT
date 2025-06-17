@@ -20,7 +20,6 @@ class FitnessCoachApp(QMainWindow):
 
         self.pose_detector = PoseDetector()
         self.ex_analyzer = ExerciseAnalyzer()
-        # self.ghost_guide = GhostGuide(animation_speed=1) # Rimosso l'istanza di GhostGuide
         self.cap = None
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_frame)
@@ -36,10 +35,9 @@ class FitnessCoachApp(QMainWindow):
         self.target_reached_sound = self.load_sound("sounds/obbiettivo.wav")
         self.form_error_sound = self.load_sound("sounds/redflag.wav")
 
-        # Nuovi attributi per il countdown
         self.countdown_timer = None
         self.countdown_value = 0
-        self.exercise_started = False  # Flag per indicare se l'esercizio è iniziato
+        self.exercise_started = False
 
         self.setup_ui()
         self.update_feedback_and_reps()
@@ -163,7 +161,6 @@ class FitnessCoachApp(QMainWindow):
 
         self.pose_detector = PoseDetector()
         self.ex_analyzer.reset_counter()
-        # self.ghost_guide.reset() # Rimosso il reset dell'animazione del fantasma
         self.last_rep = 0
 
         self.start_sound_played = False
@@ -176,14 +173,13 @@ class FitnessCoachApp(QMainWindow):
         self.exercise_selector.setEnabled(False)
         self.target_reps_input.setEnabled(False)
 
-        # Inizia il countdown
-        self.countdown_value = 3  # Inizia il countdown da 3
+        self.countdown_value = 3
         self.countdown_timer = QTimer(self)
         self.countdown_timer.timeout.connect(self.update_countdown)
-        self.countdown_timer.start(1000)  # Aggiorna ogni 1 secondo
+        self.countdown_timer.start(1000)
         self.update_feedback_and_reps(feedback_text=f'Preparati! {self.countdown_value}')
-        self.start_button.setEnabled(False)  # Disabilita il pulsante durante il countdown
-        self.exercise_started = False # L'esercizio non è ancora iniziato
+        self.start_button.setEnabled(False)
+        self.exercise_started = False
 
         self.timer.start(33)
 
@@ -196,9 +192,9 @@ class FitnessCoachApp(QMainWindow):
         else:
             self.countdown_timer.stop()
             self.countdown_timer = None
-            self.exercise_started = True  # L'esercizio è iniziato
-            self.update_feedback_and_reps(feedback_text='In attesa di stabilizzazione...') # Messaggio iniziale dopo il countdown
-            self.start_button.setEnabled(True) # Riabilita il pulsante
+            self.exercise_started = True
+            self.update_feedback_and_reps(feedback_text='In attesa di stabilizzazione...')
+            self.start_button.setEnabled(True)
 
     def stop_exercise(self):
         self.timer.stop()
@@ -211,7 +207,7 @@ class FitnessCoachApp(QMainWindow):
         self.start_button.setText('Inizia Allenamento')
         self.exercise_selector.setEnabled(True)
         self.target_reps_input.setEnabled(True)
-        self.exercise_started = False # Reset flag
+        self.exercise_started = False
 
         cleaned_image = QPixmap(self.image_label.size())
         cleaned_image.fill(Qt.GlobalColor.black)
@@ -225,7 +221,6 @@ class FitnessCoachApp(QMainWindow):
         actual_reps = rep_count if rep_count is not None else self.ex_analyzer.get_rep_count()
 
         self.rep_label.setText(f'RIPETIZIONI: {actual_reps}')
-
         motivational_text = ""
         target = self.target_reps
 
@@ -233,40 +228,23 @@ class FitnessCoachApp(QMainWindow):
             if actual_reps >= target:
                 motivational_text = f"\nCOMPLIMENTI! OBIETTIVO DI {target} RAGGIUNTO E SUPERATO! SEI GRANDE!"
                 if not self.target_sound_played:
-                    if self.target_reached_sound:
-                        self.target_reached_sound.play()
+                    if self.target_reached_sound: self.target_reached_sound.play()
                     self.target_sound_played = True
-
-                full_feedback_message = form_feedback + motivational_text
-                if feedback_text is None :
-                     full_feedback_message = self.ex_analyzer.feedback + motivational_text
-
-                self.feedback_label.setText(full_feedback_message)
+                self.feedback_label.setText(form_feedback + motivational_text)
                 QApplication.processEvents()
-
                 QTimer.singleShot(1500, self.stop_exercise)
                 return
-
-            elif actual_reps == target - 1 and target > 1:
-                motivational_text = "\nQUESTA E' L'ULTIMA!"
-            elif actual_reps == target - 2 and target > 2:
-                motivational_text = "\nQUASI FATTO, SOLO DUE ANCORA!"
-            elif actual_reps > 0 and actual_reps >= target * 0.75 :
-                 motivational_text = f"\nCONTINUA COSÌ, SEI VICINISSIMO ({actual_reps}/{target})!"
-            elif actual_reps > 0 and actual_reps >= target * 0.5 :
-                 motivational_text = f"\nOTTIMO! PIÙ DI METÀ FATTO ({actual_reps}/{target})! VAI AVANTI COSÌ!"
-            elif actual_reps > 0 :
-                 motivational_text = f"\nBENE! Procedi verso {target} ({actual_reps}/{target})."
-
-        final_feedback_display = form_feedback
-        if motivational_text:
-            final_feedback_display += motivational_text
-
+            elif actual_reps == target - 1 and target > 1: motivational_text = "\nQUESTA E' L'ULTIMA!"
+            elif actual_reps == target - 2 and target > 2: motivational_text = "\nQUASI FATTO, SOLO DUE ANCORA!"
+            elif actual_reps > 0 and actual_reps >= target * 0.75: motivational_text = f"\nCONTINUA COSÌ, SEI VICINISSIMO ({actual_reps}/{target})!"
+            elif actual_reps > 0 and actual_reps >= target * 0.5: motivational_text = f"\nOTTIMO! PIÙ DI METÀ FATTO ({actual_reps}/{target})! VAI AVANTI COSÌ!"
+            elif actual_reps > 0: motivational_text = f"\nBENE! Procedi verso {target} ({actual_reps}/{target})."
+        
+        final_feedback_display = form_feedback + motivational_text
         self.feedback_label.setText(final_feedback_display)
 
         if actual_reps > self.last_rep:
-            if self.one_rep_sound:
-                self.one_rep_sound.play()
+            if self.one_rep_sound: self.one_rep_sound.play()
             self.last_rep = actual_reps
             self.error_sound_played = False
 
@@ -281,18 +259,19 @@ class FitnessCoachApp(QMainWindow):
             return
 
         frame = cv2.flip(frame, 1)
+        output_frame = frame.copy()
 
-        output_frame = frame.copy() # Inizializza output_frame qui
-
-        if self.exercise_started: # Esegui il rilevamento e l'analisi solo dopo il countdown
-            self.pose_detector.find_pose(frame)
-            landmarks = self.pose_detector.find_position(frame)
+        if self.exercise_started:
+            h, w, _ = frame.shape
+            video_area_frame = frame[:, :int(w*0.8)] # Estrai l'area del video per l'analisi
+            
+            self.pose_detector.find_pose(video_area_frame)
+            landmarks = self.pose_detector.find_position(video_area_frame)
 
             analysis_success = False
             current_form_feedback = self.ex_analyzer.feedback
             exercise_type = self.exercise_selector.currentText()
 
-            # 2. Analisi dell'esercizio
             if landmarks:
                 try:
                     if exercise_type == 'Squat':
@@ -300,59 +279,43 @@ class FitnessCoachApp(QMainWindow):
                     elif exercise_type == 'Lunge':
                         analysis_success, current_form_feedback = self.ex_analyzer.analyze_lunge(landmarks)
 
-                    # Gestione suoni (logica invariata)
                     if not analysis_success and self.ex_analyzer.landmarks_stable and not self.error_sound_played:
-                        if self.form_error_sound:
-                            self.form_error_sound.play()
+                        if self.form_error_sound: self.form_error_sound.play()
                         self.error_sound_played = True
-                    elif analysis_success and self.error_sound_played: # Reset sound flag if form becomes correct
+                    elif analysis_success and self.error_sound_played:
                         self.error_sound_played = False
 
                 except Exception as e:
                     current_form_feedback = f'Errore analisi: {str(e)}'
-            else: # Se nessun landmark viene trovato
+            else:
                 _, visibility_feedback = self.ex_analyzer._handle_landmark_visibility_and_stability(landmarks, [])
                 current_form_feedback = visibility_feedback
 
             self.update_feedback_and_reps(feedback_text=current_form_feedback)
 
-            # 3. Disegno sul Frame
-            # Rimosso il disegno del fantasma guida
+            # Disegna il widget di profondità Squat (se applicabile)
+            if exercise_type == 'Squat':
+                output_frame = self.pose_detector.draw_squat_depth_widget(output_frame, self.ex_analyzer.squat_range_info)
 
-            # 3.1. Disegna la Guida di Profondità Squat (se applicabile)
-            if exercise_type == 'Squat' and self.ex_analyzer.squat_depth_info['user_hip_y'] is not None:
-                user_hip_y = self.ex_analyzer.squat_depth_info['user_hip_y']
-                optimal_hip_y = self.ex_analyzer.squat_depth_info['optimal_hip_y']
-                output_frame = self.pose_detector.draw_squat_depth_guide(output_frame, user_hip_y, optimal_hip_y)
-
-            # 3.2. Disegna la Posa dell'Utente
             is_stable = self.ex_analyzer.landmarks_stable
-            output_frame = self.pose_detector.draw_user_pose(output_frame,
-                                                             exercise_success=analysis_success if is_stable else None)
-
-            # 3.3. Disegna i Punti Target Successivi
+            output_frame = self.pose_detector.draw_user_pose(output_frame, exercise_success=analysis_success if is_stable else None)
+            
             if self.ex_analyzer.target_pose_landmarks:
                 output_frame = self.pose_detector.draw_target_landmarks(output_frame, self.ex_analyzer.target_pose_landmarks)
-
-        else: # Durante il countdown, mostra solo il numero
+        else:
             font = cv2.FONT_HERSHEY_SIMPLEX
-            # Regola dimensione e posizione del testo
             text_to_display = str(self.countdown_value) if self.countdown_value > 0 else 'VIA!'
             text_size = 3
-            text_color = (255, 255, 255) # Bianco
-            text_thickness = 5
-            (text_w, text_h), _ = cv2.getTextSize(text_to_display, font, text_size, text_thickness)
+            (text_w, text_h), _ = cv2.getTextSize(text_to_display, font, text_size, 5)
             text_x = (frame.shape[1] - text_w) // 2
             text_y = (frame.shape[0] + text_h) // 2
-            cv2.putText(output_frame, text_to_display, (text_x, text_y), font, text_size, text_color, text_thickness, cv2.LINE_AA)
+            cv2.putText(output_frame, text_to_display, (text_x, text_y), font, text_size, (255, 255, 255), 5, cv2.LINE_AA)
 
-        # 4. Visualizza il Frame finale
         try:
             rgb_image = cv2.cvtColor(output_frame, cv2.COLOR_BGR2RGB)
             h, w, ch = rgb_image.shape
             bytes_per_line = ch * w
             qt_image = QImage(rgb_image.data, w, h, bytes_per_line, QImage.Format.Format_RGB888)
-
             pixmap = QPixmap.fromImage(qt_image)
             scaled_pixmap = pixmap.scaled(self.image_label.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
             self.image_label.setPixmap(scaled_pixmap)

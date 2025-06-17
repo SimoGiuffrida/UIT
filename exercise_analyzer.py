@@ -11,7 +11,13 @@ class ExerciseAnalyzer:
         self.unstable_frames = 0  # Frame instabili consecutivi
         self.req_stable_frames = 20  # Frame necessari per la stabilità
         self.max_unstable_frames = 15  # Max frame instabili tollerati
-        self.squat_depth_info = {'user_hip_y': None, 'optimal_hip_y': None} # Nuovo: informazioni per la guida della profondità dello squat
+        # Informazioni per il widget di profondità dello squat
+        self.squat_range_info = {
+            'current_hip_y': None,
+            'upper_bound_y': None,
+            'correct_bound_y': None,  # NEW: ideal transition point
+            'lower_bound_y': None
+        }
         self.target_pose_landmarks = {} # Stores normalized [x, y] for target points
 
     def _check_landmarks_visibility(self, landmarks, req_points):
@@ -43,6 +49,8 @@ class ExerciseAnalyzer:
                 self.pos_state = None
                 self.feedback = "Visibilità persa, riposizionati."
             self.landmarks_stable = False
+            # Reset delle informazioni sul range se si perde la visibilità
+            self.squat_range_info = {'current_hip_y': None, 'upper_bound_y': None, 'lower_bound_y': None}
             if self.unstable_frames >= self.max_unstable_frames:
                 return False, "Visibilità persa troppo a lungo. Riposizionati e mantieni la stabilità."
             return False, feedback_visibility
@@ -57,15 +65,16 @@ class ExerciseAnalyzer:
             return True, ""
         else:
             self.landmarks_stable = False
+            # Reset delle informazioni sul range durante l'instabilità
+            self.squat_range_info = {'current_hip_y': None, 'upper_bound_y': None, 'lower_bound_y': None}
             return False, f"Mantieni una posizione stabile ({self.stable_frames}/{self.req_stable_frames})..."
 
     def analyze_squat(self, landmarks):
-        req_points = [11, 12, 23, 24, 25, 27]  # Spalle, Anche, Ginocchio Destro, Caviglia Destra
+        req_points = [11, 12, 23, 24, 25, 26, 27, 28]
 
-        # Reset target landmarks for the current frame
+        # Reset
         self.target_pose_landmarks = {}
-        # Reset delle informazioni sulla profondità all'inizio di ogni analisi
-        self.squat_depth_info = {'user_hip_y': None, 'optimal_hip_y': None}
+        self.squat_range_info = {'current_hip_y': None, 'upper_bound_y': None, 'lower_bound_y': None}
 
         status_ok, stability_feedback = self._handle_landmark_visibility_and_stability(landmarks, req_points)
         if not status_ok:
@@ -73,93 +82,99 @@ class ExerciseAnalyzer:
             return False, self.feedback
 
         try:
-            # Assicurati di prendere le coordinate pixel per il calcolo dell'angolo e le normalizzate per il feedback visivo
+            # Coordinate Pixel per angoli
             shoulder_mid_px = [(landmarks[11][0] + landmarks[12][0])/2, (landmarks[11][1] + landmarks[12][1])/2]
             hip_mid_px = [(landmarks[23][0] + landmarks[24][0])/2, (landmarks[23][1] + landmarks[24][1])/2]
+            knee_r_px = landmarks[26][:2]
+            ankle_r_px = landmarks[28][:2]
+            knee_l_px = landmarks[25][:2]
+            ankle_l_px = landmarks[27][:2]
+            knee_mid_px = [(knee_r_px[0] + knee_l_px[0])/2, (knee_r_px[1] + knee_l_px[1])/2]
 
-            # Use normalized coordinates for relative calculations
+            # Coordinate Normalizzate per la logica
             hip_mid_norm_y = (landmarks[23][5] + landmarks[24][5]) / 2
-            knee_mid_norm_y = (landmarks[25][5] + landmarks[26][5]) / 2
+            
+            # LOGICA MODIFICATA: Limiti più rigorosi per lo squat
+            # Calcoliamo i limiti basandoci sull'altezza dello scheletro rilevato
+            shoulder_mid_norm_y = (landmarks[11][5] + landmarks[12][5]) / 2
             ankle_mid_norm_y = (landmarks[27][5] + landmarks[28][5]) / 2
 
-            # Average X coordinates for symmetry
-            hip_mid_norm_x = (landmarks[23][4] + landmarks[24][4]) / 2
-            knee_mid_norm_x = (landmarks[25][4] + landmarks[26][4]) / 2
+            SQUAT_CORRECT_BOUND_Y = None  # NEW
+            SQUAT_UPPER_BOUND_Y = None
+            SQUAT_LOWER_BOUND_Y = None
 
+            # Calcoliamo l'altezza operativa (spalle -> caviglie) per rendere i limiti relativi
+            operational_height = ankle_mid_norm_y - shoulder_mid_norm_y
+            if operational_height > 0.1: # Controllo di sicurezza per evitare valori anomali
+                # Il limite superiore rimane a circa il 35% della discesa dalle spalle
+                SQUAT_UPPER_BOUND_Y = shoulder_mid_norm_y + operational_height * 0.35
+                SQUAT_CORRECT_BOUND_Y = shoulder_mid_norm_y + operational_height * 0.5  # NEW: 50% depth
+                # MODIFICA: Il limite inferiore è ora al 65% invece del 75% (più alto = più rigoroso)
+                SQUAT_LOWER_BOUND_Y = shoulder_mid_norm_y + operational_height * 0.65
+            
+            # Popola le informazioni per il widget, solo se i limiti sono stati calcolati
+            if SQUAT_UPPER_BOUND_Y is not None:
+                self.squat_range_info = {
+                    'current_hip_y': hip_mid_norm_y,
+                    'upper_bound_y': SQUAT_UPPER_BOUND_Y,
+                    'correct_bound_y': SQUAT_CORRECT_BOUND_Y,  # NEW
+                    'lower_bound_y': SQUAT_LOWER_BOUND_Y
+                }
 
-            knee_angle = self._calculate_angle(hip_mid_px, landmarks[25][:2], landmarks[27][:2])
-            torso_angle = self._calculate_angle(shoulder_mid_px, hip_mid_px, landmarks[25][:2])
+            # Calcolo angoli
+            knee_angle_r = self._calculate_angle(hip_mid_px, knee_r_px, ankle_r_px)
+            knee_angle_l = self._calculate_angle(hip_mid_px, knee_l_px, ankle_l_px)
+            knee_angle = (knee_angle_r + knee_angle_l) / 2
+            torso_angle = self._calculate_angle(shoulder_mid_px, hip_mid_px, knee_mid_px)
 
             current_feedback = ""
             pose_correct = True
 
-            # Valore y normalizzato per l'anca alla profondità ottimale (es. 0.65)
-            optimal_hip_y_for_feedback = 0.65
-
-            if knee_angle > 160:  # Posizione eretta (utente UP)
+            # LOGICA MODIFICATA: Range di angoli più rigoroso
+            if knee_angle > 160:
+                # Se il ginocchio è quasi dritto, l'utente è in posizione "su"
                 if self.pos_state == 'down':
+                    # Se l'utente era in posizione "giù" e ora è "su", una ripetizione è completa
                     self.rep_count += 1
                     current_feedback = f'Ottimo! Ripetizione {self.rep_count} completata.'
                 else:
                     current_feedback = 'Piega le ginocchia per iniziare lo squat.'
-                    # If user is UP, set target for DOWN position
-                    if self.landmarks_stable: # Only show targets when stable
-                        # Define target Y position relative to current hip/ankle Y
-                        # These ratios are empirical and might need fine-tuning based on testing
-                        target_hip_y = ankle_mid_norm_y * 0.75 # Example: hip moves down to 75% of distance from top to ankle
-                        target_knee_y = ankle_mid_norm_y * 0.9 # Example: knee moves down to 90% of distance from top to ankle
-
-                        # Keep X relative to user's body width / center
-                        self.target_pose_landmarks[23] = [hip_mid_norm_x - 0.05, target_hip_y] # Left Hip
-                        self.target_pose_landmarks[24] = [hip_mid_norm_x + 0.05, target_hip_y] # Right Hip
-                        self.target_pose_landmarks[25] = [knee_mid_norm_x - 0.05, target_knee_y] # Left Knee
-                        self.target_pose_landmarks[26] = [knee_mid_norm_x + 0.05, target_knee_y] # Right Knee
-
-
-                self.pos_state = 'up'
-            elif 110 <= knee_angle < 140:  # Posizione corretta dello squat (utente DOWN)
-                self.pos_state = 'down'
-                self.target_pose_landmarks = {} # Clear targets when in correct down position
-                if torso_angle < 45:  # Torso troppo piegato
+                self.pos_state = 'up' # Imposta lo stato a 'up'
+            elif 110 <= knee_angle <= 130:
+                # Questa è la zona di squat valido
+                self.pos_state = 'down' # L'utente è sceso abbastanza
+                if torso_angle < 45:
                     current_feedback = 'Tieni la schiena più dritta, non piegare troppo il busto.'
-                    pose_correct = False
-                elif torso_angle > 150:  # Torso troppo dritto/indietro
-                    current_feedback = 'Inclina leggermente il busto in avanti, non andare indietro.'
                     pose_correct = False
                 else:
                     current_feedback = 'Ottima posizione per lo squat!'
-            elif knee_angle < 90:  # Squat troppo profondo
-                self.pos_state = 'down'
-                self.target_pose_landmarks = {} # Clear targets
-                current_feedback = 'Squat troppo profondo, risali un po\' senza estendere completamente.'
+            elif knee_angle < 110:
+                # Squat troppo profondo
+                self.pos_state = 'down' # Anche se troppo profondo, è comunque considerato "giù"
+                current_feedback = 'Squat troppo profondo, risali fino alla zona corretta.'
                 pose_correct = False
-                # Imposta le informazioni per la guida visiva
-                self.squat_depth_info['user_hip_y'] = hip_mid_norm_y
-                self.squat_depth_info['optimal_hip_y'] = optimal_hip_y_for_feedback
-            else:  # Angolo intermedio
+            elif 130 < knee_angle <= 160:
+                # L'utente non è sceso abbastanza per un squat valido, ma è in fase di discesa
+                if self.pos_state == 'up': # Se prima era in alto
+                    current_feedback = 'Scendi di più per un squat valido.'
+                elif self.pos_state == 'down': # Se era già "down" (ad es. troppo profondo) e sta risalendo in questo range
+                    current_feedback = 'Scendi ancora un po\' per completare il movimento.'
+                else: # Stato iniziale o indefinito
+                    current_feedback = "Scendi di più per raggiungere la posizione corretta."
+                # IMPORTANTE: non cambiamo self.pos_state a 'down' qui per non convalidare un mezzo squat
+            else:
+                # Stati intermedi o non riconosciuti
                 if self.pos_state == 'up':
                     current_feedback = 'Scendi controllando il movimento.'
-                    # User is transitioning down, keep showing targets
-                    if self.landmarks_stable:
-                        target_hip_y = ankle_mid_norm_y * 0.75
-                        target_knee_y = ankle_mid_norm_y * 0.9
-
-                        self.target_pose_landmarks[23] = [hip_mid_norm_x - 0.05, target_hip_y]
-                        self.target_pose_landmarks[24] = [hip_mid_norm_x + 0.05, target_hip_y]
-                        self.target_pose_landmarks[25] = [knee_mid_norm_x - 0.05, target_knee_y]
-                        self.target_pose_landmarks[26] = [knee_mid_norm_x + 0.05, target_knee_y]
-
                 elif self.pos_state == 'down':
-                    self.target_pose_landmarks = {} # No targets needed when going up
-                    current_feedback = 'Completa il movimento salendo o scendendo correttamente.'
-                else:  # pos_state è None
-                    self.target_pose_landmarks = {} # No targets initially
+                    current_feedback = 'Completa il movimento salendo correttamente.'
+                else:
                     current_feedback = "Preparati per lo squat."
 
             if torso_angle < 40 and self.pos_state == 'down':
                 current_feedback = 'Attenzione alla schiena! Tienila più dritta.'
                 pose_correct = False
-
+            
             self.feedback = current_feedback if current_feedback else "Continua..."
             return pose_correct, self.feedback
 
@@ -176,9 +191,8 @@ class ExerciseAnalyzer:
             return False, self.feedback
 
     def analyze_lunge(self, landmarks):
-        req_points = [23, 24, 25, 26, 27, 28]  # Anche, ginocchia, caviglie (entrambe le gambe)
+        req_points = [23, 24, 25, 26, 27, 28]
 
-        # Reset target landmarks for the current frame
         self.target_pose_landmarks = {}
 
         status_ok, stability_feedback = self._handle_landmark_visibility_and_stability(landmarks, req_points)
@@ -194,52 +208,25 @@ class ExerciseAnalyzer:
             knee_l = landmarks[25][:2]
             ankle_l = landmarks[27][:2]
 
-            # Normalized coordinates for target calculation
-            knee_r_norm_x, knee_r_norm_y = landmarks[26][4], landmarks[26][5]
-            knee_l_norm_x, knee_l_norm_y = landmarks[25][4], landmarks[25][5]
-            ankle_r_norm_x, ankle_r_norm_y = landmarks[28][4], landmarks[28][5]
-            ankle_l_norm_x, ankle_l_norm_y = landmarks[27][4], landmarks[27][5]
-
-
             knee_r_angle = self._calculate_angle(hip_r, knee_r, ankle_r)
             knee_l_angle = self._calculate_angle(hip_l, knee_l, ankle_l)
 
             current_feedback = ""
             pose_correct = True
 
-            # Condizione su: entrambe le ginocchia estese (utente UP)
             if knee_r_angle > 160 and knee_l_angle > 160:
                 if self.pos_state == 'down':
                     self.rep_count += 1
                     current_feedback = f'Ottimo! Ripetizione {self.rep_count} completata.'
                 else:
                     current_feedback = 'Fai un passo per iniziare l\'affondo.'
-                    # If user is UP, set target for DOWN lunge position
-                    if self.landmarks_stable:
-                        # Queste posizioni target sono euristiche basate sulla posa ideale di un affondo
-                        # Si assume che una gamba (es. destra) vada avanti e l'altra (sinistra) indietro.
-                        # Questi valori potrebbero necessitare di fine-tuning.
-
-                        # Target ginocchio destro (presumendo gamba destra avanti)
-                        target_knee_r_y = ankle_r_norm_y * 0.8 # Profondità del ginocchio anteriore
-                        target_knee_r_x = knee_r_norm_x + 0.1 # Spostamento orizzontale in avanti
-                        self.target_pose_landmarks[26] = [target_knee_r_x, target_knee_r_y]
-
-                        # Target ginocchio sinistro (presumendo gamba sinistra indietro)
-                        target_knee_l_y = ankle_l_norm_y * 0.9 # Profondità del ginocchio posteriore
-                        target_knee_l_x = knee_l_norm_x + 0.05 # Spostamento orizzontale indietro/leggermente verso il centro
-                        self.target_pose_landmarks[25] = [target_knee_l_x, target_knee_l_y]
-
                 self.pos_state = 'up'
 
-            # Condizione giù: una gamba avanti (75-115 deg), una indietro (65-150 deg)
             elif (75 <= knee_r_angle <= 115 and 65 <= knee_l_angle <= 150) or \
                  (75 <= knee_l_angle <= 115 and 65 <= knee_r_angle <= 150):
                 self.pos_state = 'down'
-                self.target_pose_landmarks = {} # Clear targets when in correct down position
                 current_feedback = 'Buona posizione di affondo!'
 
-            # Angolo intermedio o configurazione errata
             else:
                 feedback_set_in_else = False
                 if knee_r_angle < 65 and knee_l_angle < 65 :
@@ -253,21 +240,9 @@ class ExerciseAnalyzer:
                     if self.pos_state == 'up' or self.pos_state is None:
                         current_feedback = 'Scendi nell\'affondo...'
                         pose_correct = False
-                        # User is transitioning down, keep showing targets
-                        if self.landmarks_stable:
-                            target_knee_r_y = ankle_r_norm_y * 0.8
-                            target_knee_r_x = knee_r_norm_x + 0.1
-                            self.target_pose_landmarks[26] = [target_knee_r_x, target_knee_r_y]
-
-                            target_knee_l_y = ankle_l_norm_y * 0.9
-                            target_knee_l_x = knee_l_norm_x + 0.05
-                            self.target_pose_landmarks[25] = [target_knee_l_x, target_knee_l_y]
-
                     elif self.pos_state == 'down':
-                        self.target_pose_landmarks = {} # No targets needed when going up
                         current_feedback = "Stai risalendo o correggendo la tua forma..."
                     else:
-                        self.target_pose_landmarks = {}
                         current_feedback = "Aggiusta la posizione dell'affondo."
                         pose_correct = False
 
@@ -306,5 +281,6 @@ class ExerciseAnalyzer:
         self.landmarks_stable = False
         self.stable_frames = 0
         self.unstable_frames = 0
-        self.squat_depth_info = {'user_hip_y': None, 'optimal_hip_y': None} # Reset anche del feedback profondità
+        # Reset anche del range info
+        self.squat_range_info = {'current_hip_y': None, 'upper_bound_y': None, 'lower_bound_y': None}
         self.target_pose_landmarks = {} # Reset target landmarks
