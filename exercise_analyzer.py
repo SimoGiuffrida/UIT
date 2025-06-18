@@ -1,224 +1,268 @@
+# exercise_analyzer.py
 import numpy as np
 
 class ExerciseAnalyzer:
     def __init__(self):
-        self.rep_counter = 0
-        self.position_state = None  # 'up' o 'down'
-        self.feedback = ''
-        # Flag per tracciare se i landmark sono visibili E stabili
-        self.landmarks_currently_visible_and_stable = False
-        self.stable_frames = 0
-        self.unstable_frames = 0
-        # Aumentato per dare più tempo per la stabilizzazione iniziale
-        self.required_stable_frames = 20
-        self.max_unstable_frames = 15 # Leggermente aumentato per tollerare brevi occlusioni
+        self.rep_count = 0  # Contatore ripetizioni
+        self.pos_state = None  # Stato della posizione: 'up' o 'down'
+        self.feedback = ''  # Messaggio di feedback
+        self.landmarks_stable = False  # Flag per stabilità dei landmark
+        self.stable_frames = 0  # Frame stabili consecutivi
+        self.unstable_frames = 0  # Frame instabili consecutivi
+        self.req_stable_frames = 20  # Frame necessari per la stabilità
+        self.max_unstable_frames = 15  # Max frame instabili tollerati
+        # Informazioni per il widget di profondità dello squat
+        self.squat_range_info = {
+            'current_hip_y': None,
+            'upper_bound_y': None,
+            'correct_bound_y': None,  # NEW: ideal transition point
+            'lower_bound_y': None
+        }
+        self.target_pose_landmarks = {} # Stores normalized [x, y] for target points
 
-    def _check_landmarks_visibility(self, landmarks, required_points):
-        """Controlla solo la presenza dei landmark, non la stabilità."""
+    def _check_landmarks_visibility(self, landmarks, req_points):
+        # Controlla la visibilità dei landmark richiesti
         if not landmarks:
-            return False, "Non sei visibile nella telecamera. Posizionati di fronte alla telecamera per iniziare."
+            return False, "Non sei visibile alla telecamera. Posizionati di fronte per iniziare."
 
-        missing_points_data = []
-        for point_id in required_points:
+        missing_points = []
+        for point_id in req_points:
+            # Assicurati che il landmark esista e che abbia almeno le coordinate [x, y]
             if point_id not in landmarks or not landmarks[point_id] or len(landmarks[point_id]) < 2:
-                missing_points_data.append(str(point_id)) # Potresti mappare gli ID a nomi qui
+                missing_points.append(str(point_id))
 
-        if missing_points_data:
-            if len(missing_points_data) == len(required_points):
-                return False, "Non sei visibile nella telecamera. Posizionati di fronte alla telecamera per iniziare."
+        if missing_points:
+            if len(missing_points) == len(req_points):
+                return False, "Non sei visibile alla telecamera. Posizionati di fronte per iniziare."
             else:
-                # Fornisce un feedback più specifico sui punti mancanti, se desiderato
-                # Per ora, manteniamo un messaggio generico per semplicità
-                return False, "Alcuni punti del corpo non sono visibili. Assicurati che tutto il corpo sia inquadrato."
+                return False, "Alcuni punti del corpo non sono visibili. Assicurati di essere interamente nell'inquadratura."
         return True, ""
 
-    def _handle_landmark_visibility_and_stability(self, landmarks, required_points):
-        """Gestisce sia la visibilità che la stabilità dei landmark."""
-        all_landmarks_present_this_frame, feedback_visibility = self._check_landmarks_visibility(landmarks, required_points)
+    def _handle_landmark_visibility_and_stability(self, landmarks, req_points):
+        # Gestisce visibilità e stabilità dei landmark
+        all_landmarks_present, feedback_visibility = self._check_landmarks_visibility(landmarks, req_points)
 
-        if not all_landmarks_present_this_frame:
+        if not all_landmarks_present:
             self.unstable_frames += 1
-            # Resetta stable_frames se i landmark non sono presenti
             self.stable_frames = 0
-            if self.landmarks_currently_visible_and_stable: # Era stabile, ora non più
-                self.position_state = None # Reset dello stato dell'esercizio
+            if self.landmarks_stable:
+                self.pos_state = None
                 self.feedback = "Visibilità persa, riposizionati."
-            self.landmarks_currently_visible_and_stable = False
+            self.landmarks_stable = False
+            # Reset delle informazioni sul range se si perde la visibilità
+            self.squat_range_info = {'current_hip_y': None, 'upper_bound_y': None, 'lower_bound_y': None}
             if self.unstable_frames >= self.max_unstable_frames:
-                return False, "Visibilità persa per troppo tempo. Riposizionati e mantieni la stabilità."
+                return False, "Visibilità persa troppo a lungo. Riposizionati e mantieni la stabilità."
             return False, feedback_visibility
 
-        # Se siamo qui, i landmark sono presenti in questo frame
         self.stable_frames += 1
-        self.unstable_frames = 0 # Resetta il conteggio instabile dato che abbiamo un frame valido
+        self.unstable_frames = 0
 
-        if self.stable_frames >= self.required_stable_frames:
-            if not self.landmarks_currently_visible_and_stable:
-                self.feedback = "Stabile. Puoi iniziare l'esercizio!" # Feedback quando si diventa stabili
-            self.landmarks_currently_visible_and_stable = True
-            # Non restituire feedback qui, lascia che sia l'analisi specifica dell'esercizio a farlo
+        if self.stable_frames >= self.req_stable_frames:
+            if not self.landmarks_stable:
+                self.feedback = "Stabile. Puoi iniziare l'esercizio!"
+            self.landmarks_stable = True
             return True, ""
         else:
-            # I landmark sono presenti, ma non ancora abbastanza stabili
-            self.landmarks_currently_visible_and_stable = False
-            return False, f"Mantieni la posizione stabile ({self.stable_frames}/{self.required_stable_frames})..."
+            self.landmarks_stable = False
+            # Reset delle informazioni sul range durante l'instabilità
+            self.squat_range_info = {'current_hip_y': None, 'upper_bound_y': None, 'lower_bound_y': None}
+            return False, f"Mantieni una posizione stabile ({self.stable_frames}/{self.req_stable_frames})..."
 
     def analyze_squat(self, landmarks):
-        # Logica ripristinata dalla versione del 4 giugno (originale fornita)
-        required_points = [11, 12, 23, 24, 25, 27] # Spalle, Anche, Ginocchio Dx, Caviglia Dx
-        
-        status_ok, stability_feedback = self._handle_landmark_visibility_and_stability(landmarks, required_points)
+        req_points = [11, 12, 23, 24, 25, 26, 27, 28]
+
+        # Reset
+        self.target_pose_landmarks = {}
+        self.squat_range_info = {'current_hip_y': None, 'upper_bound_y': None, 'lower_bound_y': None}
+
+        status_ok, stability_feedback = self._handle_landmark_visibility_and_stability(landmarks, req_points)
         if not status_ok:
             self.feedback = stability_feedback
             return False, self.feedback
 
         try:
-            shoulder_mid = [(landmarks[11][0] + landmarks[12][0])/2, (landmarks[11][1] + landmarks[12][1])/2]
-            hip_mid = [(landmarks[23][0] + landmarks[24][0])/2, (landmarks[23][1] + landmarks[24][1])/2]
+            # Coordinate Pixel per angoli
+            shoulder_mid_px = [(landmarks[11][0] + landmarks[12][0])/2, (landmarks[11][1] + landmarks[12][1])/2]
+            hip_mid_px = [(landmarks[23][0] + landmarks[24][0])/2, (landmarks[23][1] + landmarks[24][1])/2]
+            knee_r_px = landmarks[26][:2]
+            ankle_r_px = landmarks[28][:2]
+            knee_l_px = landmarks[25][:2]
+            ankle_l_px = landmarks[27][:2]
+            knee_mid_px = [(knee_r_px[0] + knee_l_px[0])/2, (knee_r_px[1] + knee_l_px[1])/2]
 
-            knee_angle = self._calculate_angle(hip_mid, landmarks[25], landmarks[27]) # Usa anca-ginocchio-caviglia destra
-            torso_angle = self._calculate_angle(shoulder_mid, hip_mid, landmarks[25]) # Usa spalla-anca-ginocchio destra
+            # Coordinate Normalizzate per la logica
+            hip_mid_norm_y = (landmarks[23][5] + landmarks[24][5]) / 2
+            
+            # LOGICA MODIFICATA: Limiti più rigorosi per lo squat
+            # Calcoliamo i limiti basandoci sull'altezza dello scheletro rilevato
+            shoulder_mid_norm_y = (landmarks[11][5] + landmarks[12][5]) / 2
+            ankle_mid_norm_y = (landmarks[27][5] + landmarks[28][5]) / 2
 
-            current_feedback = "" 
-            pose_correct = True 
+            SQUAT_CORRECT_BOUND_Y = None  # NEW
+            SQUAT_UPPER_BOUND_Y = None
+            SQUAT_LOWER_BOUND_Y = None
 
-            if knee_angle > 160: # Posizione eretta (o quasi)
-                if self.position_state == 'down':
-                    self.rep_counter += 1
-                    current_feedback = f'Ottimo! Ripetizione {self.rep_counter} completata.'
+            # Calcoliamo l'altezza operativa (spalle -> caviglie) per rendere i limiti relativi
+            operational_height = ankle_mid_norm_y - shoulder_mid_norm_y
+            if operational_height > 0.1: # Controllo di sicurezza per evitare valori anomali
+                # Il limite superiore rimane a circa il 35% della discesa dalle spalle
+                SQUAT_UPPER_BOUND_Y = shoulder_mid_norm_y + operational_height * 0.35
+                SQUAT_CORRECT_BOUND_Y = shoulder_mid_norm_y + operational_height * 0.5  # NEW: 50% depth
+                # MODIFICA: Il limite inferiore è ora al 65% invece del 75% (più alto = più rigoroso)
+                SQUAT_LOWER_BOUND_Y = shoulder_mid_norm_y + operational_height * 0.65
+            
+            # Popola le informazioni per il widget, solo se i limiti sono stati calcolati
+            if SQUAT_UPPER_BOUND_Y is not None:
+                self.squat_range_info = {
+                    'current_hip_y': hip_mid_norm_y,
+                    'upper_bound_y': SQUAT_UPPER_BOUND_Y,
+                    'correct_bound_y': SQUAT_CORRECT_BOUND_Y,  # NEW
+                    'lower_bound_y': SQUAT_LOWER_BOUND_Y
+                }
+
+            # Calcolo angoli
+            knee_angle_r = self._calculate_angle(hip_mid_px, knee_r_px, ankle_r_px)
+            knee_angle_l = self._calculate_angle(hip_mid_px, knee_l_px, ankle_l_px)
+            knee_angle = (knee_angle_r + knee_angle_l) / 2
+            torso_angle = self._calculate_angle(shoulder_mid_px, hip_mid_px, knee_mid_px)
+
+            current_feedback = ""
+            pose_correct = True
+
+            # LOGICA MODIFICATA: Range di angoli più rigoroso
+            if knee_angle > 160:
+                # Se il ginocchio è quasi dritto, l'utente è in posizione "su"
+                if self.pos_state == 'down':
+                    # Se l'utente era in posizione "giù" e ora è "su", una ripetizione è completa
+                    self.rep_count += 1
+                    current_feedback = f'Ottimo! Ripetizione {self.rep_count} completata.'
                 else:
                     current_feedback = 'Piega le ginocchia per iniziare lo squat.'
-                self.position_state = 'up'
-            elif 110 <= knee_angle < 140:  # Posizione squat corretta
-                self.position_state = 'down'
-                if torso_angle < 45: # Busto troppo piegato
-                    current_feedback = 'Mantieni la schiena più dritta, non piegare troppo il busto.'
-                    pose_correct = False
-                elif torso_angle > 150: # Busto troppo dritto/indietro
-                    current_feedback = 'Inclina leggermente il busto in avanti, non andare all\'indietro.'
+                self.pos_state = 'up' # Imposta lo stato a 'up'
+            elif 110 <= knee_angle <= 130:
+                # Questa è la zona di squat valido
+                self.pos_state = 'down' # L'utente è sceso abbastanza
+                if torso_angle < 45:
+                    current_feedback = 'Tieni la schiena più dritta, non piegare troppo il busto.'
                     pose_correct = False
                 else:
-                    current_feedback = 'Ottima posizione squat!'
-            elif knee_angle < 90:  # Squat troppo profondo
-                self.position_state = 'down' 
-                current_feedback = 'Squat troppo profondo, risali leggermente senza estendere completamente.'
+                    current_feedback = 'Ottima posizione per lo squat!'
+            elif knee_angle < 110:
+                # Squat troppo profondo
+                self.pos_state = 'down' # Anche se troppo profondo, è comunque considerato "giù"
+                current_feedback = 'Squat troppo profondo, risali fino alla zona corretta.'
                 pose_correct = False
-            else: # Angolo intermedio, es. durante la discesa/salita
-                if self.position_state == 'up':
-                    current_feedback = 'Scendi più in basso controllando il movimento.'
-                elif self.position_state == 'down': 
-                    current_feedback = 'Completa il movimento tornando su o scendendo correttamente.'
-                else: # position_state is None
-                     current_feedback = "Preparati per lo squat."
-                # Non impostare pose_correct = False qui a meno che non sia una posizione errata specifica
-                # pose_correct rimane True se è solo una transizione non definita come errore
+            elif 130 < knee_angle <= 160:
+                # L'utente non è sceso abbastanza per un squat valido, ma è in fase di discesa
+                if self.pos_state == 'up': # Se prima era in alto
+                    current_feedback = 'Scendi di più per un squat valido.'
+                elif self.pos_state == 'down': # Se era già "down" (ad es. troppo profondo) e sta risalendo in questo range
+                    current_feedback = 'Scendi ancora un po\' per completare il movimento.'
+                else: # Stato iniziale o indefinito
+                    current_feedback = "Scendi di più per raggiungere la posizione corretta."
+                # IMPORTANTE: non cambiamo self.pos_state a 'down' qui per non convalidare un mezzo squat
+            else:
+                # Stati intermedi o non riconosciuti
+                if self.pos_state == 'up':
+                    current_feedback = 'Scendi controllando il movimento.'
+                elif self.pos_state == 'down':
+                    current_feedback = 'Completa il movimento salendo correttamente.'
+                else:
+                    current_feedback = "Preparati per lo squat."
 
-            # Controllo aggiuntivo busto (catch-all)
-            if torso_angle < 40 and self.position_state == 'down': # busto molto piegato in squat
-                current_feedback = 'Attenzione alla schiena! Mantienila più dritta.'
+            if torso_angle < 40 and self.pos_state == 'down':
+                current_feedback = 'Attenzione alla schiena! Tienila più dritta.'
                 pose_correct = False
             
             self.feedback = current_feedback if current_feedback else "Continua..."
             return pose_correct, self.feedback
 
         except KeyError as e:
-            self.landmarks_currently_visible_and_stable = False 
-            self.position_state = None
+            self.landmarks_stable = False
+            self.pos_state = None
             self.feedback = f"Errore: punto chiave {e} non trovato. Riposizionati."
+            self.target_pose_landmarks = {}
             return False, self.feedback
         except Exception as e:
-            self.position_state = None
+            self.pos_state = None
             self.feedback = f"Errore durante l'analisi dello squat: {str(e)}"
+            self.target_pose_landmarks = {}
             return False, self.feedback
 
     def analyze_lunge(self, landmarks):
-        required_points = [23, 24, 25, 26, 27, 28] # Anche, ginocchia, caviglie (entrambe le gambe)
+        req_points = [23, 24, 25, 26, 27, 28]
 
-        status_ok, stability_feedback = self._handle_landmark_visibility_and_stability(landmarks, required_points)
+        self.target_pose_landmarks = {}
+
+        status_ok, stability_feedback = self._handle_landmark_visibility_and_stability(landmarks, req_points)
         if not status_ok:
             self.feedback = stability_feedback
             return False, self.feedback
 
         try:
-            hip_right = landmarks[24][:2]
-            knee_right_pt = landmarks[26][:2]
-            ankle_right_pt = landmarks[28][:2]
-            hip_left = landmarks[23][:2]
-            knee_left_pt = landmarks[25][:2]
-            ankle_left_pt = landmarks[27][:2]
+            hip_r = landmarks[24][:2]
+            knee_r = landmarks[26][:2]
+            ankle_r = landmarks[28][:2]
+            hip_l = landmarks[23][:2]
+            knee_l = landmarks[25][:2]
+            ankle_l = landmarks[27][:2]
 
-            knee_R_angle = self._calculate_angle(hip_right, knee_right_pt, ankle_right_pt)
-            knee_L_angle = self._calculate_angle(hip_left, knee_left_pt, ankle_left_pt)
+            knee_r_angle = self._calculate_angle(hip_r, knee_r, ankle_r)
+            knee_l_angle = self._calculate_angle(hip_l, knee_l, ankle_l)
 
             current_feedback = ""
-            pose_correct = True # Default a True, diventa False per errori specifici
+            pose_correct = True
 
-            # Condizione UP: entrambe le ginocchia estese
-            if knee_R_angle > 160 and knee_L_angle > 160:
-                if self.position_state == 'down':
-                    self.rep_counter += 1
-                    current_feedback = f'Ottimo! Ripetizione {self.rep_counter} completata.'
+            if knee_r_angle > 160 and knee_l_angle > 160:
+                if self.pos_state == 'down':
+                    self.rep_count += 1
+                    current_feedback = f'Ottimo! Ripetizione {self.rep_count} completata.'
                 else:
                     current_feedback = 'Fai un passo per iniziare l\'affondo.'
-                self.position_state = 'up'
-            
-            # Condizione DOWN: una gamba anteriore (75-115 gradi), una posteriore (65-150 gradi)
-            # Gamba Destra è anteriore, Gamba Sinistra è posteriore
-            elif (75 <= knee_R_angle <= 115 and 65 <= knee_L_angle <= 150):
-                self.position_state = 'down'
-                current_feedback = 'Buona posizione di affondo (Dx avanti)!'
-                # Qui si potrebbero aggiungere controlli specifici che impostano pose_correct = False
-                # Esempio: if <condizione errore busto/ginocchio>: pose_correct = False; current_feedback = "Errore X"
-            
-            # Gamba Sinistra è anteriore, Gamba Destra è posteriore
-            elif (75 <= knee_L_angle <= 115 and 65 <= knee_R_angle <= 150):
-                self.position_state = 'down'
-                current_feedback = 'Buona posizione di affondo (Sx avanti)!'
-                # Controlli aggiuntivi per la gamba sinistra avanti
-            
-            # Angolo intermedio o configurazione non standard / errata
+                self.pos_state = 'up'
+
+            elif (75 <= knee_r_angle <= 115 and 65 <= knee_l_angle <= 150) or \
+                 (75 <= knee_l_angle <= 115 and 65 <= knee_r_angle <= 150):
+                self.pos_state = 'down'
+                current_feedback = 'Buona posizione di affondo!'
+
             else:
-                # Se non è UP né una delle due configurazioni DOWN, la posa non è quella target/ideale.
-                # Il feedback guiderà l'utente; pose_correct diventerà False se è un errore definito.
                 feedback_set_in_else = False
-                if knee_R_angle < 65 and knee_L_angle < 65 : # Entrambe le ginocchia troppo piegate (es. affondo esagerato)
+                if knee_r_angle < 65 and knee_l_angle < 65 :
                     current_feedback = "Affondo troppo profondo o posizione errata, risali un po'."
                     pose_correct = False
                     feedback_set_in_else = True
-                    if self.position_state != 'down': # Se non era già down, consideralo down per questa posa errata
-                        self.position_state = 'down'
+                    if self.pos_state != 'down':
+                        self.pos_state = 'down'
 
                 if not feedback_set_in_else:
-                    if self.position_state == 'up' or self.position_state is None:
-                        current_feedback = 'Scendi in affondo...'
-                        # Durante la discesa, la posa non è ancora "down perfetta".
-                        # Per il bordo colorato, questo stato di transizione è "non corretto".
-                        pose_correct = False 
-                    elif self.position_state == 'down':
-                        current_feedback = "Stai risalendo o correggi la forma..."
-                        # Durante la risalita da uno stato 'down', manteniamo pose_correct = True
-                        # a meno che la risalita stessa non sia errata (non ancora implementato controllo specifico qui).
-                        # Se gli angoli sono semplicemente cambiati da "down perfetto" ma non sono errori definiti,
-                        # si assume una transizione valida.
-                    else: # Improbabile
+                    if self.pos_state == 'up' or self.pos_state is None:
+                        current_feedback = 'Scendi nell\'affondo...'
+                        pose_correct = False
+                    elif self.pos_state == 'down':
+                        current_feedback = "Stai risalendo o correggendo la tua forma..."
+                    else:
                         current_feedback = "Aggiusta la posizione dell'affondo."
                         pose_correct = False
-
 
             self.feedback = current_feedback if current_feedback else "Continua l'affondo..."
             return pose_correct, self.feedback
 
         except KeyError as e:
-            self.landmarks_currently_visible_and_stable = False
-            self.position_state = None
+            self.landmarks_stable = False
+            self.pos_state = None
             self.feedback = f"Errore: punto chiave {e} non trovato per l'affondo. Riposizionati."
+            self.target_pose_landmarks = {}
             return False, self.feedback
         except Exception as e:
-            self.position_state = None
+            self.pos_state = None
             self.feedback = f"Errore durante l'analisi dell'affondo: {str(e)}"
+            self.target_pose_landmarks = {}
             return False, self.feedback
 
     def _calculate_angle(self, p1, p2, p3):
+        # Calcola l'angolo tra tre punti
         p1, p2, p3 = np.array(p1), np.array(p2), np.array(p3)
         radians = np.arctan2(p3[1]-p2[1], p3[0]-p2[0]) - \
                  np.arctan2(p1[1]-p2[1], p1[0]-p2[0])
@@ -228,12 +272,15 @@ class ExerciseAnalyzer:
         return angle
 
     def get_rep_count(self):
-        return self.rep_counter
+        return self.rep_count
 
     def reset_counter(self):
-        self.rep_counter = 0
-        self.position_state = None
-        self.feedback = 'Contatore resettato. Preparati.'
-        self.landmarks_currently_visible_and_stable = False
+        self.rep_count = 0
+        self.pos_state = None
+        self.feedback = 'Contatore azzerato. Preparati.'
+        self.landmarks_stable = False
         self.stable_frames = 0
         self.unstable_frames = 0
+        # Reset anche del range info
+        self.squat_range_info = {'current_hip_y': None, 'upper_bound_y': None, 'lower_bound_y': None}
+        self.target_pose_landmarks = {} # Reset target landmarks
