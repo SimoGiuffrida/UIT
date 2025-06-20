@@ -16,6 +16,7 @@ class ErrorReviewDialog(QDialog):
     """
     Una finestra di dialogo per rivedere le schermate degli errori catturate
     durante l'esercizio, con il feedback testuale associato.
+    Mostra due immagini: la visuale originale e lo scheletro dell'errore evidenziato.
     """
     def __init__(self, error_data, parent=None):
         super().__init__(parent)
@@ -23,15 +24,44 @@ class ErrorReviewDialog(QDialog):
         self.error_data = error_data
         self.current_index = 0
         
-        self.setMinimumSize(800, 700)
-        layout = QVBoxLayout(self)
-        layout.setSpacing(15)
-        layout.setContentsMargins(15, 15, 15, 15)
+        self.setMinimumSize(1000, 700)
+        main_layout = QVBoxLayout(self)
+        main_layout.setSpacing(15)
+        main_layout.setContentsMargins(15, 15, 15, 15)
 
-        self.image_label = QLabel("Nessuna immagine da mostrare.")
-        self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.image_label.setStyleSheet("background-color: black; border-radius: 8px;")
-        layout.addWidget(self.image_label, 1)
+        # Layout per le due immagini
+        images_layout = QHBoxLayout()
+        images_layout.setSpacing(10)
+
+        # --- Pannello Immagine 1 (Originale) ---
+        view1_container = QWidget()
+        view1_layout = QVBoxLayout(view1_container)
+        view1_layout.setContentsMargins(0, 0, 0, 0)
+        title1 = QLabel("Visuale Originale Errore")
+        title1.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title1.setStyleSheet("font-size: 14px; font-weight: bold; color: #333;")
+        self.image_label_1 = QLabel("Nessuna immagine da mostrare.")
+        self.image_label_1.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.image_label_1.setStyleSheet("background-color: black; border-radius: 8px;")
+        view1_layout.addWidget(title1)
+        view1_layout.addWidget(self.image_label_1, 1)
+        
+        # --- Pannello Immagine 2 (Scheletro Evidenziato) ---
+        view2_container = QWidget()
+        view2_layout = QVBoxLayout(view2_container)
+        view2_layout.setContentsMargins(0, 0, 0, 0)
+        title2 = QLabel("Scheletro Evidenziato (Rosso)")
+        title2.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title2.setStyleSheet("font-size: 14px; font-weight: bold; color: #c0392b;")
+        self.image_label_2 = QLabel("Nessuna immagine da mostrare.")
+        self.image_label_2.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.image_label_2.setStyleSheet("background-color: black; border-radius: 8px;")
+        view2_layout.addWidget(title2)
+        view2_layout.addWidget(self.image_label_2, 1)
+
+        images_layout.addWidget(view1_container)
+        images_layout.addWidget(view2_container)
+        main_layout.addLayout(images_layout, 1)
 
         self.feedback_display_label = QLabel("")
         self.feedback_display_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -41,7 +71,7 @@ class ErrorReviewDialog(QDialog):
             background-color: #f2f2f2; border: 1px solid #e0e0e0;
             border-radius: 8px; padding: 10px;
         """)
-        layout.addWidget(self.feedback_display_label)
+        main_layout.addWidget(self.feedback_display_label)
 
         control_layout = QHBoxLayout()
         self.prev_button = QPushButton("<< Precedente")
@@ -56,24 +86,33 @@ class ErrorReviewDialog(QDialog):
         control_layout.addWidget(self.info_label)
         control_layout.addStretch()
         control_layout.addWidget(self.next_button)
-        layout.addLayout(control_layout)
+        main_layout.addLayout(control_layout)
 
         self.close_button = QPushButton("Chiudi")
         self.close_button.clicked.connect(self.accept)
-        layout.addWidget(self.close_button, alignment=Qt.AlignmentFlag.AlignCenter)
+        main_layout.addWidget(self.close_button, alignment=Qt.AlignmentFlag.AlignCenter)
         self.update_view()
 
     def update_view(self):
         if not self.error_data: return
-        pixmap, feedback_text = self.error_data[self.current_index]
-        scaled_pixmap = pixmap.scaled(self.image_label.size(), 
-                                      Qt.AspectRatioMode.KeepAspectRatio, 
-                                      Qt.TransformationMode.SmoothTransformation)
-        self.image_label.setPixmap(scaled_pixmap)
+        
+        pixmap_orig, pixmap_skeleton, feedback_text = self.error_data[self.current_index]
+
+        # Aggiorna entrambe le immagini
+        self.set_image(self.image_label_1, pixmap_orig)
+        self.set_image(self.image_label_2, pixmap_skeleton)
+
         self.feedback_display_label.setText(feedback_text)
         self.info_label.setText(f"Errore {self.current_index + 1} di {len(self.error_data)}")
         self.prev_button.setEnabled(self.current_index > 0)
         self.next_button.setEnabled(self.current_index < len(self.error_data) - 1)
+
+    def set_image(self, label, pixmap):
+        """Funzione helper per scalare e impostare una QPixmap su una QLabel."""
+        scaled_pixmap = pixmap.scaled(label.size(), 
+                                      Qt.AspectRatioMode.KeepAspectRatio, 
+                                      Qt.TransformationMode.SmoothTransformation)
+        label.setPixmap(scaled_pixmap)
 
     def show_prev_image(self):
         if self.current_index > 0:
@@ -118,17 +157,15 @@ class FitnessCoachApp(QMainWindow):
         
         self.error_screenshots = []
         
-        # NUOVA LOGICA: Cooldown per la cattura degli errori
         self.is_on_error_cooldown = False
         self.error_cooldown_timer = QTimer(self)
         self.error_cooldown_timer.setSingleShot(True)
         self.error_cooldown_timer.timeout.connect(self.end_error_cooldown)
-        self.COOLDOWN_DURATION_MS = 5000  # 5 secondi
+        self.COOLDOWN_DURATION_MS = 1000
 
         self.setup_ui()
         self.update_feedback_and_reps()
 
-    # NUOVO METODO per terminare il cooldown
     def end_error_cooldown(self):
         self.is_on_error_cooldown = False
 
@@ -258,7 +295,6 @@ class FitnessCoachApp(QMainWindow):
         self.target_sound_played = False
         self.error_sound_played = False
         
-        # MODIFICA: Assicurarsi che il cooldown sia disattivo all'inizio
         self.is_on_error_cooldown = False
         self.error_cooldown_timer.stop()
 
@@ -302,7 +338,6 @@ class FitnessCoachApp(QMainWindow):
         self.target_reps_input.setEnabled(True)
         self.exercise_started = False
         
-        # MODIFICA: Ferma il timer di cooldown se è attivo
         self.error_cooldown_timer.stop()
 
         cleaned_image = QPixmap(self.image_label.size())
@@ -371,6 +406,7 @@ class FitnessCoachApp(QMainWindow):
             analysis_success = False
             current_form_feedback = self.ex_analyzer.feedback
             exercise_type = self.exercise_selector.currentText()
+            is_error_to_capture = False
 
             if landmarks:
                 try:
@@ -379,21 +415,13 @@ class FitnessCoachApp(QMainWindow):
                     elif exercise_type == 'Lunge':
                         analysis_success, current_form_feedback = self.ex_analyzer.analyze_lunge(landmarks)
 
-                    # --- LOGICA DI CATTURA ERRORE CON COOLDOWN ---
-                    # MODIFICATO: Aggiunto controllo per self.is_on_error_cooldown
                     if not analysis_success and self.ex_analyzer.landmarks_stable and not self.error_sound_played and not self.is_on_error_cooldown:
                         if self.form_error_sound: self.form_error_sound.play()
                         self.error_sound_played = True
                         
-                        # NUOVO: Avvia il cooldown per evitare catture troppo ravvicinate
                         self.is_on_error_cooldown = True
                         self.error_cooldown_timer.start(self.COOLDOWN_DURATION_MS)
-                        
-                        rgb_image = cv2.cvtColor(output_frame, cv2.COLOR_BGR2RGB)
-                        h_img, w_img, ch = rgb_image.shape
-                        bytes_per_line = ch * w_img
-                        qt_image = QImage(rgb_image.data, w_img, h_img, bytes_per_line, QImage.Format.Format_RGB888)
-                        self.error_screenshots.append((QPixmap.fromImage(qt_image), current_form_feedback))
+                        is_error_to_capture = True
                     
                     elif analysis_success and self.error_sound_played:
                         self.error_sound_played = False
@@ -414,6 +442,28 @@ class FitnessCoachApp(QMainWindow):
             
             if self.ex_analyzer.target_pose_landmarks:
                 output_frame = self.pose_detector.draw_target_landmarks(output_frame, self.ex_analyzer.target_pose_landmarks)
+            
+            # --- NUOVA LOGICA DI CATTURA ERRORE (MODIFICATA) ---
+            # Cattura le immagini DOPO il rendering, ma generandole dal frame pulito per escludere il widget dello squat.
+            if is_error_to_capture:
+                # Immagine 1: Frame pulito + overlay standard (rosso per errore)
+                image_1_final = frame.copy()
+
+                # Immagine 2: Frame pulito + scheletro rosso marcato
+                image_2_base = frame.copy()
+                image_2_final = self.pose_detector.draw_error_skeleton(image_2_base)
+
+                # Funzione helper per convertire cv2 image a QPixmap
+                def to_qpixmap(cv_img):
+                    rgb_image = cv2.cvtColor(cv_img, cv2.COLOR_BGR2RGB)
+                    h_img, w_img, ch = rgb_image.shape
+                    bytes_per_line = ch * w_img
+                    qt_image = QImage(rgb_image.data, w_img, h_img, bytes_per_line, QImage.Format.Format_RGB888)
+                    return QPixmap.fromImage(qt_image)
+
+                pixmap1 = to_qpixmap(image_1_final)
+                pixmap2 = to_qpixmap(image_2_final)
+                self.error_screenshots.append((pixmap1, pixmap2, current_form_feedback))
         else:
             font = cv2.FONT_HERSHEY_SIMPLEX
             text_to_display = str(self.countdown_value) if self.countdown_value > 0 else 'VIA!'

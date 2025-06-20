@@ -79,6 +79,36 @@ class PoseDetector:
         img[:, :video_width] = img_to_draw_on
         return img
 
+    def draw_error_skeleton(self, img):
+        """
+        Disegna lo scheletro dell'utente (landmark e connessioni) in rosso
+        in modo marcato sull'immagine fornita, limitatamente all'area video.
+        """
+        h, w, _ = img.shape
+        video_width = int(w * 0.8)
+        # Isola l'area video e crea una copia per disegnarci sopra
+        img_to_draw_on = img[:, :video_width].copy()
+
+        if self.results and self.results.pose_landmarks:
+            red_color = (0, 0, 255) # BGR per Rosso
+            landmark_drawing_spec = self.mp_draw.DrawingSpec(
+                color=red_color, thickness=2, circle_radius=4
+            )
+            connection_drawing_spec = self.mp_draw.DrawingSpec(
+                color=red_color, thickness=3
+            )
+            self.mp_draw.draw_landmarks(
+                img_to_draw_on,
+                self.results.pose_landmarks,
+                self.mp_pose.POSE_CONNECTIONS,
+                landmark_drawing_spec,
+                connection_drawing_spec
+            )
+        # Ricombina l'immagine con lo scheletro rosso nell'immagine originale
+        img_with_skeleton = img.copy()
+        img_with_skeleton[:, :video_width] = img_to_draw_on
+        return img_with_skeleton
+
     def draw_squat_depth_widget(self, img, squat_range_info):
         """
         Disegna un widget sul lato destro per visualizzare la profondità dello squat.
